@@ -1,3 +1,4 @@
+import os
 import urllib.parse
 
 from django.http import Http404
@@ -38,7 +39,12 @@ class AnimeRoomLobby(TemplateView):
     template_name = "lobby_redirect.html"
 
     def get(self, request, **kwargs):
-        base_url = "https://anime.dmkt-sp.jp/animestore/sc_d_pc?"
+        # dアニメストアのドメイン（D_ANIME_STORE_DOMAIN）へリダイレクトする。
+        # 旧 anime.dmkt-sp.jp から animestore.docomo.ne.jp へ移行済み。
+        anime_store_domain = os.environ.get(
+            "D_ANIME_STORE_DOMAIN", "animestore.docomo.ne.jp"
+        )
+        base_url = f"https://{anime_store_domain}/animestore/sc_d_pc?"
         room_id = self.kwargs["room_id"]
         try:
             anime_room = get_object_or_404(AnimeRoom, room_id=room_id)
