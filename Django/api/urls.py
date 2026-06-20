@@ -8,6 +8,10 @@ urlpatterns = [
         views.ChromeExtensionVersionCheckAPI.as_view(),
     ),
     path(
+        "v1/anime-store/lobby/<uuid:room_id>",
+        views.AnimeStoreLobbyResolveAPI.as_view(),
+    ),
+    path(
         "v1/statistics/anime-store/active-user-per-day",
         views.AnimeActiveUserPerDayAPI.as_view(),
     ),

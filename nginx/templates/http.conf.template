@@ -1,3 +1,13 @@
+# アップストリームのホスト:ポートは環境変数（.env.global）から差し込む。Docker では
+# サービス名（django/frontend）で解決し、k3s 等へ移行する際は Service の DNS 名へ変更する。
+# 値は nginx 公式イメージの envsubst（/etc/nginx/templates/*.template）で展開される。
+upstream app_server {
+    server ${DJANGO_UPSTREAM} fail_timeout=0;
+}
+upstream frontend_server {
+    server ${FRONTEND_UPSTREAM} fail_timeout=0;
+}
+
 server {
     listen 80 default;
     client_max_body_size 4G;
@@ -9,17 +19,59 @@ server {
             alias /static/;
     }
 
+    # grafana is optional (compose profile 'metrics'); resolve at request time so
+    # nginx can start even when the grafana container is absent.
     location /grafana/ {
+        set $monitor_upstream "${GRAFANA_UPSTREAM}";
         proxy_set_header Host $host;
-        proxy_pass http://monitor_server;
+        proxy_pass http://$monitor_upstream;
     }
 
     location /.well-known/ {
         alias /.well-known/;
     }
 
-    location / {
+    # ── Django (ASGI): REST API・管理画面・統計チャート・メトリクス ──
+    location /api/ {
+        # REST API は公開エンドポイント（統計・shields バッジ・ロビー解決・
+        # 拡張機能バージョン確認）のみ。ローカル開発で Next の `pnpm dev`
+        # (http://localhost:3000) や Chrome 拡張から cross-origin で叩けるよう
+        # CORS を許可する。`add_header` は内部リダイレクト先の named location
+        # では引き継がれないため、ここで直接 proxy_pass する。
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Accept" always;
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Content-Type, Accept" always;
+            add_header Access-Control-Max-Age 86400 always;
+            return 204;
+        }
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+        proxy_pass http://app_server;
+    }
+    location /admin/ {
         try_files $uri @proxy_to_app;
+    }
+    location = /metrics {
+        try_files $uri @proxy_to_app;
+    }
+    # WebSocket（同時視聴の同期）。/anime-store/lobby/ はフロント、party/ は Django。
+    location /anime-store/party/ {
+        try_files $uri @proxy_to_app;
+    }
+
+    # ── React フロントエンド: 公開ページ（/ /usage /qa /anime-store/lobby/… と静的アセット）──
+    location / {
+        try_files $uri @proxy_to_frontend;
     }
 
     location @proxy_to_app {
@@ -29,9 +81,21 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X_Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_redirect off;
         proxy_pass http://app_server;
+    }
+
+    location @proxy_to_frontend {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+        proxy_pass http://frontend_server;
     }
 
     error_page 500 502 503 504 /500.html;

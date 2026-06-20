@@ -7,7 +7,10 @@
 
 dアニメストアの「同時視聴」を支える **Django バックエンド**です。中心は
 **WebSocket（Django Channels）** によるルーム内の動画プレイヤー同期で、
-REST API（統計・バッジ・拡張機能バージョン確認）と管理画面・LP も提供します。
+REST API（統計・バッジ・拡張機能バージョン確認・ロビー解決）と管理画面を提供します。
+ユーザー向け公開ページ（LP・使い方・Q&A・統計・ルーム遷移ロビー）は **React フロント
+エンド（`../frontend`）** へ移行済みで、nginx が公開ページをフロントへ、`/api`・`/admin`・
+WebSocket（`/anime-store/party/`）を Django へ振り分けます。
 
 > **最重要:** WebSocket のメッセージプロトコル（`streamer/format.py` の `action` と
 > ペイロード形状）、DB モデルの意味、REST API の契約は **外部（Chrome 拡張・フロント）との
@@ -75,7 +78,8 @@ backend/
       cron.py               保持期間クリーンアップ関数
       management/commands/cleanup.py
     api/                    DRF（統計 / shields バッジ / 拡張機能バージョン確認）
-    web/                    テンプレート（LP・使い方・チャート・lobby リダイレクト）
+    web/                    管理者向け統計チャートのテンプレート（admin/chart のみ。
+                            LP・使い方・ロビーは frontend へ移行）
 ```
 
 ### Request / data flow
@@ -87,6 +91,25 @@ Chrome 拡張 (content script) ──wss──▶ Nginx ──▶ Django(ASGI/Ch
                                               └─ 管理画面 (Jazzmin) : /admin/*
 Django ──▶ PostgreSQL（永続化） / Redis（Channels レイヤ）
 ```
+
+## 設定の外部化（k3s 移行を見据えて）
+
+サービス間のホスト解決は **すべて環境変数（.env ファイル）に外出し** している。Docker では
+Compose のサービス名で解決し、k3s 等へ移行する際は env（ConfigMap）を差し替えるだけでよい。
+
+| 変数 | 既定（Docker） | 用途 | 置き場所 |
+|---|---|---|---|
+| `DATABASE_HOST` / `DATABASE_PORT` | `postgres` / `5432` | Django → PostgreSQL | `Django/.env.django` |
+| `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | Channels レイヤ | `Django/.env.django` |
+| `DJANGO_UPSTREAM` | `django:8000` | nginx → Django | `.env.global` |
+| `FRONTEND_UPSTREAM` | `frontend:3000` | nginx → フロント | `.env.global` |
+| `GRAFANA_UPSTREAM` | `grafana:3000` | nginx → Grafana | `.env.global` |
+
+- nginx のアップストリームは `nginx/templates/http.conf.template` に定義し、nginx 公式イメージの
+  envsubst が `.env.global` の値で展開する（`nginx/conf.d/*.conf` は生成物で gitignore）。
+  アプリ側の nginx 設定やコードを触らず、env だけで解決先を変更できる。
+- k3s では各 Service の DNS（例: `django.<ns>.svc.cluster.local:8000`）を上記変数へ設定する。
+  `resolver`（`nginx/nginx.conf`）は Docker の埋め込み DNS 用なので、cluster DNS に合わせて調整する。
 
 ## Common commands
 

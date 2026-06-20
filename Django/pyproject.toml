@@ -7,7 +7,8 @@ requires-python = ">=3.13"
 dependencies = [
     "django>=5.2,<6.0",
     "channels>=4.2",
-    "channels-redis>=4.2",
+    "channels-redis>=4.2,<4.3",
+    "redis>=5,<6",
     "daphne>=4.1",
     "djangorestframework>=3.15",
     "django-filter>=24.3",

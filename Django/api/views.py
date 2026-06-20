@@ -1,12 +1,13 @@
 import datetime
 import os
 import re
+import urllib.parse
 
 import pandas as pd
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -81,7 +82,8 @@ class ChromeExtensionVersionCheckAPI(APIView):
 class AnimeActiveUserPerDayAPI(APIView):
     """Daily count of users that have ever been in a room."""
 
-    permission_classes = [IsAdminUser]
+    # 統計ダッシュボードはフロントエンドから誰でも閲覧できるよう公開（認証不要）。
+    permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
         frame = _resample_per_day(_per_day_counts(AnimeUser))
@@ -91,7 +93,8 @@ class AnimeActiveUserPerDayAPI(APIView):
 class AnimeActiveRoomPerDayAPI(APIView):
     """Daily count of rooms created by users."""
 
-    permission_classes = [IsAdminUser]
+    # 統計ダッシュボードはフロントエンドから誰でも閲覧できるよう公開（認証不要）。
+    permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
         frame = _resample_per_day(_per_day_counts(AnimeRoom))
@@ -101,7 +104,8 @@ class AnimeActiveRoomPerDayAPI(APIView):
 class AnimeRoomReactionCountAPI(APIView):
     """Per-type reaction counts."""
 
-    permission_classes = [IsAdminUser]
+    # 統計ダッシュボードはフロントエンドから誰でも閲覧できるよう公開（認証不要）。
+    permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
         response = [
@@ -119,7 +123,8 @@ class AnimeRoomReactionCountAPI(APIView):
 class AnimeRoomReactionAllCountAPI(APIView):
     """Total reaction count."""
 
-    permission_classes = [IsAdminUser]
+    # 統計ダッシュボードはフロントエンドから誰でも閲覧できるよう公開（認証不要）。
+    permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
         return Response({"data": {"count": AnimeReaction.objects.all().count()}})
@@ -128,7 +133,8 @@ class AnimeRoomReactionAllCountAPI(APIView):
 class AnimeUserAllCountAPI(APIView):
     """Total user count."""
 
-    permission_classes = [IsAdminUser]
+    # 統計ダッシュボードはフロントエンドから誰でも閲覧できるよう公開（認証不要）。
+    permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
         return Response({"data": {"count": AnimeUser.objects.all().count()}})
@@ -137,7 +143,8 @@ class AnimeUserAllCountAPI(APIView):
 class AnimeRoomAllCountAPI(APIView):
     """Total room count."""
 
-    permission_classes = [IsAdminUser]
+    # 統計ダッシュボードはフロントエンドから誰でも閲覧できるよう公開（認証不要）。
+    permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
         return Response({"data": {"count": AnimeRoom.objects.all().count()}})
@@ -146,7 +153,8 @@ class AnimeRoomAllCountAPI(APIView):
 class AnimeUserAliveCountAPI(APIView):
     """Currently connected user count."""
 
-    permission_classes = [IsAdminUser]
+    # 統計ダッシュボードはフロントエンドから誰でも閲覧できるよう公開（認証不要）。
+    permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
         return Response({"data": {"count": AnimeUser.objects.alive().count()}})
@@ -155,7 +163,8 @@ class AnimeUserAliveCountAPI(APIView):
 class AnimeRoomAliveCountAPI(APIView):
     """Currently active room count."""
 
-    permission_classes = [IsAdminUser]
+    # 統計ダッシュボードはフロントエンドから誰でも閲覧できるよう公開（認証不要）。
+    permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
         return Response({"data": {"count": AnimeRoom.objects.alive().count()}})
@@ -217,3 +226,50 @@ class ReactionCountShieldsAPI(_ShieldsView):
             "label": "TotalReaction",
             "message": str(AnimeReaction.objects.all().count()),
         }
+
+
+class AnimeStoreLobbyResolveAPI(APIView):
+    """Resolve a room id to the dアニメストア redirect URL.
+
+    Server-side replacement for the old ``web.views.AnimeRoomLobby`` template
+    view: the React frontend's room-transition page (``/anime-store/lobby/
+    <room_id>``) calls this to learn where to redirect the user once the
+    extension has confirmed it is installed and compatible.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, room_id, format=None) -> Response:
+        # 旧 anime.dmkt-sp.jp から animestore.docomo.ne.jp へ移行済み。
+        anime_store_domain = os.environ.get(
+            "D_ANIME_STORE_DOMAIN", "animestore.docomo.ne.jp"
+        )
+        try:
+            anime_room = AnimeRoom.objects.get(room_id=room_id)
+        except AnimeRoom.DoesNotExist:
+            return Response(
+                {"message": "ルームが見つかりません"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if anime_room.deleted_at is not None:
+            return Response(
+                {"message": "ルームは終了しています"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        base_url = f"https://{anime_store_domain}/animestore/sc_d_pc?"
+        url_param = urllib.parse.urlencode(
+            {
+                "partId": anime_room.part_id,
+                "party": "join",
+                "room_id": str(room_id),
+            }
+        )
+        return Response(
+            {
+                "redirect_url": base_url + url_param,
+                "part_id": anime_room.part_id,
+                "room_id": str(room_id),
+            },
+            status=status.HTTP_200_OK,
+        )

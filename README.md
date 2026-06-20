@@ -98,6 +98,32 @@ docker compose exec django pipdeptree --graph-output dot > dependencies.dot
 docker compose exec django cat /var/log/cron.log
 ```
 
+### Chrome 拡張機能からローカルバックエンドへ接続する（PNA の無効化）
+
+dアニメストア (`https://anime.dmkt-sp.jp`) のページに注入された Chrome 拡張機能の
+content script からローカルの `localhost` バックエンドへ繋ぐと、Chrome の
+**Private Network Access (PNA)** によって接続が **コンソールにエラーを出さずサイレントに
+遮断** されます（WebSocket は `code=1006 wasClean=false` で即時 close、`fetch` は
+`Failed to fetch`）。「公開ネットワーク → プライベートネットワーク」への接続が
+Chrome 130+ で塞がれているためです。
+
+開発時のみ、Chrome のフラグを無効化して回避します。
+
+1. Chrome のアドレスバーに以下を 1 つずつ開く:
+
+   - `chrome://flags/#private-network-access-send-preflights`
+   - `chrome://flags/#private-network-access-respect-preflight-results`
+   - `chrome://flags/#local-network-access-check-websockets` （Chrome の新しい版で PNA から改称・WebSocket 専用の判定を行うフラグ）
+
+2. 各フラグのドロップダウンを **Disabled** に変更
+3. 右下に表示される **「Relaunch」** ボタンで Chrome を再起動
+
+> 本番サイト (`https://d-party.net`) は public origin 同士なので PNA の影響を受けません。
+> 上記フラグはローカル開発でのみ無効化してください。
+
+恒久対応（拡張機能側）は WebSocket の生成を service worker (background) に移し、
+`chrome-extension://` origin から接続する構成への変更です。
+
 ### その他
 
 開発に必要な情報は出来る限り、[wiki](https://github.com/d-party/d-party-Backend/wiki)に集約しています。
