@@ -1,12 +1,10 @@
 import urllib.parse
-from django.shortcuts import render
-from django.urls import is_valid_path
-from django.views.generic import TemplateView, RedirectView
-from streamer.models import AnimeRoom
-from django.shortcuts import get_object_or_404
-from django.http import Http404
 
-from streamer.models import AnimeRoom, AnimeUser
+from django.http import Http404
+from django.shortcuts import get_object_or_404
+from django.views.generic import TemplateView
+
+from streamer.models import AnimeRoom
 
 
 class IndexView(TemplateView):
@@ -44,9 +42,9 @@ class AnimeRoomLobby(TemplateView):
         room_id = self.kwargs["room_id"]
         try:
             anime_room = get_object_or_404(AnimeRoom, room_id=room_id)
-        except:
-            raise Http404()
-        if anime_room is None or not (anime_room.deleted_at is None):
+        except Exception as exc:
+            raise Http404() from exc
+        if anime_room is None or anime_room.deleted_at is not None:
             raise Http404()
         url_param = urllib.parse.urlencode(
             {

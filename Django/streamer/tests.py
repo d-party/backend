@@ -1,13 +1,13 @@
 import uuid
-from django.test import TransactionTestCase, TestCase
-from channels.testing import ChannelsLiveServerTestCase
-from channels.testing import WebsocketCommunicator
-from channels.db import database_sync_to_async
+
 import pytest
+from channels.db import database_sync_to_async
+from channels.testing import WebsocketCommunicator
+from django.test import TransactionTestCase
+
+from .consumers import AnimePartyConsumer
 from .factories import AnimeRoomFactory, AnimeUserFactory
 from .models import AnimeRoom, AnimeUser
-from .consumers import AnimePartyConsumer
-from d_party import asgi
 
 
 @pytest.mark.django_db(transaction=True)

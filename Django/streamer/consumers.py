@@ -1,35 +1,29 @@
 import json
 import uuid
 
-
-import json
-from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-
-from djangochannelsrestframework.generics import GenericAsyncAPIConsumer
 from djangochannelsrestframework.decorators import action
+from djangochannelsrestframework.generics import GenericAsyncAPIConsumer
 
-from .models import AnimeRoom, AnimeUser, AnimeReaction, ReactionType
 from .format import (
     Create,
     GroupSend,
     HostSend,
-    SyncResponse,
-    User,
     Join,
-    Option,
-    VideoOperation,
     Leave,
-    SyncRequest,
-    UserSend,
-    RoomSend,
-    UserAdd,
     OperationNotification,
     Reaction,
+    RoomSend,
     ServerMessage,
-    VideoOperation,
+    SyncRequest,
+    SyncResponse,
+    User,
+    UserAdd,
     UserList,
+    UserSend,
+    VideoOperation,
 )
+from .models import AnimeReaction, AnimeRoom, AnimeUser, ReactionType
 from .util import is_valid_uuid, uuid_json_encoder
 
 
@@ -71,7 +65,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         user = User(**self.anime_user.__dict__)
         create = Create(room_id=self.anime_room.room_id, user=user)
-        await self.send(text_data=json.dumps(create.dict()))
+        await self.send(text_data=json.dumps(create.model_dump()))
         user_list = await self.database_user_list()
         user_list_data = UserList(user_list=user_list)
         response_data = RoomSend(
@@ -80,7 +74,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
 
     @action()
@@ -109,7 +103,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         user = User(**self.anime_user.__dict__)
         join = Join(room_id=self.anime_room.room_id, user=user)
-        await self.send(text_data=json.dumps(join.dict()))
+        await self.send(text_data=json.dumps(join.model_dump()))
         user_add = UserAdd(user=user)
         response_data = GroupSend(
             response=user_add,
@@ -118,7 +112,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.database_increase_num_people()
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
         user_list = await self.database_user_list()
         user_list_data = UserList(user_list=user_list)
@@ -128,7 +122,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
 
     @action()
@@ -153,7 +147,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         video_operation = VideoOperation(
             room_id=self.anime_room.room_id,
             operation=operation,
-            user=User(**self.anime_user.__dict__).dict(),
+            user=User(**self.anime_user.__dict__).model_dump(),
             option=option,
         )
         response_data = GroupSend(
@@ -167,7 +161,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             await self.database_update_room_part_id(video_operation.option.part_id)
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
 
     @action()
@@ -176,14 +170,14 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         sync_requestはホストの状態に動画プレイヤーを同期を要求するアクション
         """
         await self.database_renew_state()
-        sync_request = SyncRequest(user=User(**self.anime_user.__dict__).dict())
+        sync_request = SyncRequest(user=User(**self.anime_user.__dict__).model_dump())
         response_data = HostSend(
             response=sync_request,
             sender_channel_name=self.channel_name,
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
 
     @action()
@@ -204,7 +198,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
 
     @action()
@@ -218,14 +212,14 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         operation_notification = OperationNotification(
             room_id=self.anime_room.room_id,
             operation=operation,
-            user=User(**self.anime_user.__dict__).dict(),
+            user=User(**self.anime_user.__dict__).model_dump(),
         )
         response_data = GroupSend(
             response=operation_notification, sender_channel_name=self.channel_name
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
 
     @action()
@@ -241,7 +235,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
         await self.database_create_reaction(reaction_type=reaction_type)
 
@@ -250,7 +244,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """user_listを受け取った場合のアクション"""
         user_list = await self.database_user_list()
         response_data = UserList(user_list=user_list)
-        await self.send(text_data=json.dumps(response_data.dict()))
+        await self.send(text_data=json.dumps(response_data.model_dump()))
 
     async def room_send(self, data: dict):
         """自分を含むのグループに所属するユーザーへの一斉送信
@@ -267,7 +261,6 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             data (dict): [description]
         """
         if self.channel_name != data["sender_channel_name"]:
-            print(data["response"])
             await self.send(text_data=json.dumps(data["response"]))
 
     async def host_send(self, data: dict):
@@ -297,7 +290,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """
         if self.anime_room is None or self.anime_user is None:
             return
-        leave = Leave(user=User(**self.anime_user.__dict__).dict())
+        leave = Leave(user=User(**self.anime_user.__dict__).model_dump())
         response_data = GroupSend(
             response=leave,
             sender_channel_name=self.channel_name,
@@ -317,11 +310,11 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             )
             await self.channel_layer.group_send(
                 str(self.anime_room.room_id),
-                json.loads(json.dumps(send_data.dict())),
+                json.loads(json.dumps(send_data.model_dump())),
             )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
         user_list = await self.database_user_list()
         user_list_data = UserList(user_list=user_list)
@@ -331,7 +324,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.dict())),
+            json.loads(json.dumps(response_data.model_dump())),
         )
         await self.channel_layer.group_discard(
             str(self.anime_room.room_id), self.channel_name

@@ -1,9 +1,9 @@
-# GitHub Action that uses Black to reformat Python code (if needed) when doing a git push.
-# If all Python code in the repo is compliant with Black then this Action does nothing.
-# Otherwise, Black is run and its changes are committed to the repo.
-# https://github.com/cclauss/autoblack
+# Lint & auto-format Python code with Ruff on push.
+# If the code is already compliant this Action does nothing; otherwise Ruff's
+# fixes/formatting are committed back to the branch.
+# (Replaces the previous Black-based workflow.)
 
-name: Black
+name: Ruff
 on:
   push:
     branches:
@@ -16,19 +16,19 @@ on:
     types: [closed]
 
 jobs:
-  build:
+  ruff:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v3
-        with:
-          python-version: "3.10"
-      - run: pip install black
-      - name: black
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: ruff format + check
+        working-directory: ./Django
         run: |
-          black .;
+          uvx ruff format .
+          uvx ruff check --fix .
           git config --global user.name github-actions || exit 0;
           git config --global user.email '${GITHUB_ACTOR}@users.noreply.github.com' || exit 0;
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY || exit 0;
-          git commit -am "fixup! Format Python code with psf/black push" || exit 0;
+          git commit -am "style: apply ruff format/fixes" || exit 0;
           git push --force origin HEAD:$GITHUB_REF || exit 0;

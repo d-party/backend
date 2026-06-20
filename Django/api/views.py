@@ -1,179 +1,123 @@
-from cProfile import label
-from linecache import checkcache
-import os
 import datetime
+import os
+import re
+
 import pandas as pd
-
-from streamer.models import AnimeUser, AnimeRoom, AnimeReaction, ReactionType
-from django.shortcuts import render
 from django.db.models import Count
-from django_dynamic_shields.views import DynamicShieldsView
-from django_dynamic_shields.data import ShieldsData
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser, AllowAny
-
+from django.db.models.functions import TruncDate
 from rest_framework import status
-from distutils.version import LooseVersion, StrictVersion
+from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-# Create your views here.
-class ChromeExtensionVersionCheckAPI(APIView):
-    """chromeの拡張機能のバージョンをチェックし、
-    現在のバックエンドと問題なくメッセージ可能なバージョンか否かを通知する
+from streamer.models import AnimeReaction, AnimeRoom, AnimeUser, ReactionType
+
+# Matches the previous ``distutils.version.StrictVersion`` accepted form: a
+# strict ``major.minor.patch`` triple. ``distutils`` was removed in Python 3.12.
+_STRICT_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def _parse_strict_version(value: str) -> tuple[int, int, int] | None:
+    """Parse a strict ``x.y.z`` version into a comparable tuple, else ``None``."""
+    if _STRICT_VERSION_RE.match(value):
+        major, minor, patch = (int(part) for part in value.split("."))
+        return (major, minor, patch)
+    return None
+
+
+def _per_day_counts(model) -> list[dict]:
+    """Return ``[{"day": date, "count": n}, ...]`` grouped by creation day.
+
+    Uses ``TruncDate`` so the query works across database backends (the
+    previous ``.extra(select={"day": "date(created_at)"})`` was MySQL-specific).
     """
+    return list(
+        model.objects.annotate(day=TruncDate("created_at"))
+        .values("day")
+        .annotate(count=Count("created_at"))
+        .order_by("day")
+    )
+
+
+def _resample_per_day(rows: list[dict]) -> pd.DataFrame:
+    """Fill gaps so every calendar day up to today has a count."""
+    if len(rows) == 0 or rows[-1]["day"] != datetime.date.today():
+        rows = rows + [{"day": datetime.date.today(), "count": 0}]
+    frame = pd.DataFrame(rows).set_index("day").asfreq("1D", fill_value=0)
+    frame["day"] = frame.index.map(lambda x: x.to_pydatetime().date())
+    return frame
+
+
+class ChromeExtensionVersionCheckAPI(APIView):
+    """Check whether a Chrome extension version is compatible with the backend."""
 
     permission_classes = [AllowAny]
 
     def get(self, request, format=None) -> Response:
-        """chromeのバージョンをgetのパラメータとして受け取り、
-        バックエンドが問題なく処理できるバージョンであるかを確認する
-
-        Args:
-            request ([type]): [description]
-            format ([type], optional): [description]. Defaults to None.
-
-        Returns:
-            [Response]: {"description": "理由を記述"}
-            バージョンチェックの成否は
-
-        """
-        if "extension-version" in request.GET:
-            current_version: str = str(request.GET.get("extension-version"))
-            required_version: str = str(os.getenv("CHROME_EXTENSION_REQUIRED_VERSION"))
-            try:
-                current_strict_version = StrictVersion(current_version)
-                required_strict_version = StrictVersion(required_version)
-            except:
-                return Response(
-                    {"message": "求めているバージョンの記法と一致しません"},
-                    status=status.HTTP_406_NOT_ACCEPTABLE,
-                )
-
-            return Response(
-                {"is_possible": current_strict_version >= required_strict_version},
-                status=status.HTTP_200_OK,
-            )
-        else:
+        if "extension-version" not in request.GET:
             return Response(
                 {"message": "extension-versionパラメータが存在しません"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        current_version = _parse_strict_version(
+            str(request.GET.get("extension-version"))
+        )
+        required_version = _parse_strict_version(
+            str(os.getenv("CHROME_EXTENSION_REQUIRED_VERSION"))
+        )
+        if current_version is None or required_version is None:
+            return Response(
+                {"message": "求めているバージョンの記法と一致しません"},
+                status=status.HTTP_406_NOT_ACCEPTABLE,
+            )
+
+        return Response(
+            {"is_possible": current_version >= required_version},
+            status=status.HTTP_200_OK,
+        )
+
 
 class AnimeActiveUserPerDayAPI(APIView):
-    """アクティブユーザー数を返す
-    アクティブユーザー数とは、ルーム内に存在していたユーザーである
-    """
+    """Daily count of users that have ever been in a room."""
 
     permission_classes = [IsAdminUser]
 
     def get(self, request, format=None) -> Response:
-        """アクティブユーザー数のdictを返す
-
-        Args:
-            request ([type]): [description]
-            format ([type], optional): [description]. Defaults to None.
-
-        Returns:
-            [Response]: {"description": "理由を記述"}
-
-        """
-        Active_User_Per_Day_Set = (
-            AnimeUser.objects.extra(select={"day": "date( created_at )"})
-            .values("day")
-            .annotate(count=Count("created_at"))
-            .order_by("day")
-        )
-        Active_User_Per_Day = list(Active_User_Per_Day_Set)
-        if (
-            len(Active_User_Per_Day) == 0
-            or Active_User_Per_Day[-1]["day"] != datetime.date.today()
-        ):
-            Active_User_Per_Day.append({"day": datetime.date.today(), "count": 0})
-
-        Active_User_Per_Day_Pd = (
-            pd.DataFrame(Active_User_Per_Day)
-            .set_index("day")
-            .asfreq("1D", fill_value=0)
-        )
-
-        Active_User_Per_Day_Pd["day"] = Active_User_Per_Day_Pd.index.map(
-            lambda x: x.to_pydatetime().date()
-        )
-        return Response(
-            {
-                "data": Active_User_Per_Day_Pd.to_dict(orient="records"),
-            }
-        )
+        frame = _resample_per_day(_per_day_counts(AnimeUser))
+        return Response({"data": frame.to_dict(orient="records")})
 
 
 class AnimeActiveRoomPerDayAPI(APIView):
-    """アクティブルーム数を返す
-    アクティブルーム数とは、ユーザーによって作られたルームの合計である
-    """
+    """Daily count of rooms created by users."""
 
     permission_classes = [IsAdminUser]
 
     def get(self, request, format=None) -> Response:
-        """アクティブルーム数のdictを返す
-
-        Args:
-            request ([type]): [description]
-            format ([type], optional): [description]. Defaults to None.
-
-        Returns:
-            [Response]: {"description": "理由を記述"}
-
-        """
-        Active_Room_Per_Day_Set = (
-            AnimeRoom.objects.extra(select={"day": "date( created_at )"})
-            .values("day")
-            .annotate(count=Count("created_at"))
-            .order_by("day")
-        )
-        Active_User_Room_Day = list(Active_Room_Per_Day_Set)
-        if (
-            len(Active_User_Room_Day) == 0
-            or Active_User_Room_Day[-1]["day"] != datetime.date.today()
-        ):
-            Active_User_Room_Day.append({"day": datetime.date.today(), "count": 0})
-        Active_Room_Per_Day_Pd = (
-            pd.DataFrame(Active_User_Room_Day)
-            .set_index("day")
-            .asfreq("1D", fill_value=0)
-        )
-
-        Active_Room_Per_Day_Pd["day"] = Active_Room_Per_Day_Pd.index.map(
-            lambda x: x.to_pydatetime().date()
-        )
-        return Response(
-            {
-                "data": Active_Room_Per_Day_Pd.to_dict(orient="records"),
-            }
-        )
+        frame = _resample_per_day(_per_day_counts(AnimeRoom))
+        return Response({"data": frame.to_dict(orient="records")})
 
 
 class AnimeRoomReactionCountAPI(APIView):
-    """アニメルーム内のリアクションのカウント結果を返すAPI"""
+    """Per-type reaction counts."""
 
     permission_classes = [IsAdminUser]
 
     def get(self, request, format=None) -> Response:
-        response = []
-        for x in ReactionType.choices:
-            response.append(
-                {
-                    "count": AnimeReaction.objects.filter(reaction_type=x[0])
-                    .all()
-                    .count(),
-                    "reaction_type": x[1],
-                }
-            )
+        response = [
+            {
+                "count": AnimeReaction.objects.filter(reaction_type=value)
+                .all()
+                .count(),
+                "reaction_type": label,
+            }
+            for value, label in ReactionType.choices
+        ]
         return Response({"data": response})
 
 
 class AnimeRoomReactionAllCountAPI(APIView):
-    """アニメルーム内のリアクションの累計カウント結果を返すAPI"""
+    """Total reaction count."""
 
     permission_classes = [IsAdminUser]
 
@@ -182,7 +126,7 @@ class AnimeRoomReactionAllCountAPI(APIView):
 
 
 class AnimeUserAllCountAPI(APIView):
-    """アニメルーム内のユーザー数の累計カウント結果を返すAPI"""
+    """Total user count."""
 
     permission_classes = [IsAdminUser]
 
@@ -191,7 +135,7 @@ class AnimeUserAllCountAPI(APIView):
 
 
 class AnimeRoomAllCountAPI(APIView):
-    """アニメルーム数の累計カウント結果を返すAPI"""
+    """Total room count."""
 
     permission_classes = [IsAdminUser]
 
@@ -200,7 +144,7 @@ class AnimeRoomAllCountAPI(APIView):
 
 
 class AnimeUserAliveCountAPI(APIView):
-    """現在接続中のアニメルーム内のユーザー数のカウント結果を返すAPI"""
+    """Currently connected user count."""
 
     permission_classes = [IsAdminUser]
 
@@ -209,7 +153,7 @@ class AnimeUserAliveCountAPI(APIView):
 
 
 class AnimeRoomAliveCountAPI(APIView):
-    """現在接続中のアニメルーム数の現在のカウント結果を返すAPI"""
+    """Currently active room count."""
 
     permission_classes = [IsAdminUser]
 
@@ -217,111 +161,59 @@ class AnimeRoomAliveCountAPI(APIView):
         return Response({"data": {"count": AnimeRoom.objects.alive().count()}})
 
 
-class RoomCountShieldsAPI(DynamicShieldsView):
-    def create_shields_data(self):
-        self.shields_data = ShieldsData(
-            label="TotalRoom", message=str(AnimeRoom.objects.all().count())
-        )
+class _ShieldsView(APIView):
+    """Base view returning a shields.io endpoint badge payload.
+
+    Replaces the unmaintained ``django-dynamic-shields`` dependency while
+    keeping the public badge JSON contract (``schemaVersion`` 1).
+    """
+
+    permission_classes = [AllowAny]
+
+    def shields_data(self) -> dict:
+        raise NotImplementedError
+
+    def get(self, request, format=None) -> Response:
+        return Response({"schemaVersion": 1, **self.shields_data()})
 
 
-class RoomCountParDayShieldsAPI(DynamicShieldsView):
-    def create_shields_data(self):
-        """アクティブルーム数の平均バッジ
-
-        Args:
-            request ([type]): [description]
-            format ([type], optional): [description]. Defaults to None.
-
-        Returns:
-            [Response]: {"description": "理由を記述"}
-
-        """
-        Active_Room_Per_Day_Set = (
-            AnimeRoom.objects.extra(select={"day": "date( created_at )"})
-            .values("day")
-            .annotate(count=Count("created_at"))
-            .order_by("day")
-        )
-        Active_User_Room_Day = list(Active_Room_Per_Day_Set)
-        if (
-            len(Active_User_Room_Day) == 0
-            or Active_User_Room_Day[-1]["day"] != datetime.date.today()
-        ):
-            Active_User_Room_Day.append({"day": datetime.date.today(), "count": 0})
-        Active_Room_Per_Day_Pd = (
-            pd.DataFrame(Active_User_Room_Day)
-            .set_index("day")
-            .asfreq("1D", fill_value=0)
-        )
-
-        Active_Room_Per_Day_Pd["day"] = Active_Room_Per_Day_Pd.index.map(
-            lambda x: x.to_pydatetime().date()
-        )
-        Active_Room_Per_Day_Mean = (
-            "{:.2f}".format(Active_Room_Per_Day_Pd["count"].mean()) + "/day"
-        )
-        self.shields_data = ShieldsData(
-            label="Room",
-            message=Active_Room_Per_Day_Mean,
-            color="brightgreen",
-            cacheSeconds=86400,
-        )
+class RoomCountShieldsAPI(_ShieldsView):
+    def shields_data(self) -> dict:
+        return {"label": "TotalRoom", "message": str(AnimeRoom.objects.all().count())}
 
 
-class UserCountShieldsAPI(DynamicShieldsView):
-    def create_shields_data(self):
-        self.shields_data = ShieldsData(
-            label="TotalUser", message=str(AnimeUser.objects.all().count())
-        )
+class RoomCountParDayShieldsAPI(_ShieldsView):
+    def shields_data(self) -> dict:
+        frame = _resample_per_day(_per_day_counts(AnimeRoom))
+        mean = "{:.2f}".format(frame["count"].mean()) + "/day"
+        return {
+            "label": "Room",
+            "message": mean,
+            "color": "brightgreen",
+            "cacheSeconds": 86400,
+        }
 
 
-class UserCountParDayShieldsAPI(DynamicShieldsView):
-    def create_shields_data(self):
-        """アクティブユーザー数の平均バッジ
-
-        Args:
-            request ([type]): [description]
-            format ([type], optional): [description]. Defaults to None.
-
-        Returns:
-            [Response]: {"description": "理由を記述"}
-
-        """
-        Active_User_Per_Day_Set = (
-            AnimeUser.objects.extra(select={"day": "date( created_at )"})
-            .values("day")
-            .annotate(count=Count("created_at"))
-            .order_by("day")
-        )
-        Active_User_Per_Day = list(Active_User_Per_Day_Set)
-        if (
-            len(Active_User_Per_Day) == 0
-            or Active_User_Per_Day[-1]["day"] != datetime.date.today()
-        ):
-            Active_User_Per_Day.append({"day": datetime.date.today(), "count": 0})
-
-        Active_User_Per_Day_Pd = (
-            pd.DataFrame(Active_User_Per_Day)
-            .set_index("day")
-            .asfreq("1D", fill_value=0)
-        )
-
-        Active_User_Per_Day_Pd["day"] = Active_User_Per_Day_Pd.index.map(
-            lambda x: x.to_pydatetime().date()
-        )
-        Active_User_Per_Day_Mean = (
-            "{:.2f}".format(Active_User_Per_Day_Pd["count"].mean()) + "/day"
-        )
-        self.shields_data = ShieldsData(
-            label="User",
-            message=Active_User_Per_Day_Mean,
-            color="brightgreen",
-            cacheSeconds=86400,
-        )
+class UserCountShieldsAPI(_ShieldsView):
+    def shields_data(self) -> dict:
+        return {"label": "TotalUser", "message": str(AnimeUser.objects.all().count())}
 
 
-class ReactionCountShieldsAPI(DynamicShieldsView):
-    def create_shields_data(self):
-        self.shields_data = ShieldsData(
-            label="TotalReaction", message=str(AnimeReaction.objects.all().count())
-        )
+class UserCountParDayShieldsAPI(_ShieldsView):
+    def shields_data(self) -> dict:
+        frame = _resample_per_day(_per_day_counts(AnimeUser))
+        mean = "{:.2f}".format(frame["count"].mean()) + "/day"
+        return {
+            "label": "User",
+            "message": mean,
+            "color": "brightgreen",
+            "cacheSeconds": 86400,
+        }
+
+
+class ReactionCountShieldsAPI(_ShieldsView):
+    def shields_data(self) -> dict:
+        return {
+            "label": "TotalReaction",
+            "message": str(AnimeReaction.objects.all().count()),
+        }

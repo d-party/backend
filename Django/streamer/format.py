@@ -1,15 +1,27 @@
-import imp
-from pydantic import BaseModel
+"""Pydantic models describing the WebSocket message protocol.
+
+These models define the exact shape of every message the streamer consumer
+emits. The wire format is part of the public contract shared with the Chrome
+extension and the front-end, so field names, ``action`` values and nesting must
+not change.
+
+Note: ``SerializeAsAny`` is required on the ``response`` field so that, under
+pydantic v2, subclass-specific fields are kept when serializing a field typed
+as the ``ResponseBaseFormat`` base class (this matched pydantic v1's default
+``.dict()`` behaviour).
+"""
+
 from uuid import UUID
-from typing import Dict, List, Optional, Any, Union
+
+from pydantic import BaseModel, SerializeAsAny
 
 
 class User(BaseModel):
-    """Userの定義
+    """A participant.
 
-    attributes:
-        user_id ([UUID]): uuid形式で記述されたid
-        user_name([str]): strで記述された名前
+    Attributes:
+        user_id: UUID identifying the user.
+        user_name: display name chosen by the user.
     """
 
     user_id: UUID
@@ -17,12 +29,10 @@ class User(BaseModel):
 
 
 class ResponseBaseFormat(BaseModel):
-    """ResponseBaseFormatの定義
-    受信するデータはactionというカラムを使って判定する
-    このクラスを継承して受信時のデータの型チェックを行う
+    """Base class for messages.
 
-    attirbutes:
-        action ([str]): joinやleaveなどの文字列
+    Received data is dispatched by its ``action`` field; outgoing data
+    subclasses this to describe its payload.
     """
 
     action: str
@@ -47,7 +57,7 @@ class Create(ResponseBaseFormat):
 
 class Option(BaseModel):
     time: float
-    src: Union[str, None]
+    src: str | None
     paused: str
     rate: str
     part_id: str
@@ -88,11 +98,6 @@ class UserAdd(ResponseBaseFormat):
     user: User
 
 
-class Leave(ResponseBaseFormat):
-    action: str = "leave"
-    user: User
-
-
 class ServerMessage(ResponseBaseFormat):
     action: str = "server_message"
     message_type: str
@@ -100,13 +105,13 @@ class ServerMessage(ResponseBaseFormat):
 
 class UserList(ResponseBaseFormat):
     action: str = "user_list"
-    user_list: List[User]
+    user_list: list[User]
 
 
 class BaseGroupSend(BaseModel):
     type: str
     sender_channel_name: str
-    response: ResponseBaseFormat
+    response: SerializeAsAny[ResponseBaseFormat]
 
 
 class GroupSend(BaseGroupSend):

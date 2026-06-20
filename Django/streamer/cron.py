@@ -1,75 +1,58 @@
+"""Periodic maintenance jobs.
+
+Previously scheduled through the unmaintained ``django-crontab``; now invoked
+by the ``cleanup`` management command (driven by the container's system cron).
+
+The deletion semantics are unchanged: ``QuerySet.delete()`` performs a logical
+delete, ``QuerySet.delete(hard=True)`` performs a hard delete — both persist
+immediately, so the previous (no-op, and on a ``QuerySet`` actually invalid)
+``.save()`` follow-up calls have been removed.
+"""
+
 import datetime
 import os
 
-from .models import AnimeRoom, AnimeUser, AnimeReaction
+from .models import AnimeReaction, AnimeRoom, AnimeUser
+
+
+def _cutoff(days: int) -> datetime.datetime:
+    return datetime.datetime.now() - datetime.timedelta(days=days)
 
 
 def animeroom_auto_logical_delete():
-    """一定の日数以上生き残ってしまったAnimeRoomを論理削除します"""
-    logical_divide_day: str = os.getenv("LOGICAL_DIVIDE_DAY", default="3")
-    logical_divide_day_int: int = int(logical_divide_day)
-
-    divide_datetime: datetime.datetime = datetime.datetime.now() - datetime.timedelta(
-        days=logical_divide_day_int
-    )
-    animeroom_queryset = AnimeRoom.objects.alive().filter(
-        updated_at__lte=divide_datetime
-    )
-    animeroom_queryset.delete()
-    animeroom_queryset.save()
+    """Logically delete AnimeRooms that have outlived the logical retention."""
+    days = int(os.getenv("LOGICAL_DIVIDE_DAY", default="3"))
+    AnimeRoom.objects.alive().filter(updated_at__lte=_cutoff(days)).delete()
 
 
 def animeroom_auto_hard_delete():
-    """一定の日数以上生き残ってしまったAnimeRoomを削除します"""
-    hard_divide_day: str = os.getenv("HARD_DIVIDE_DAY", default="365")
-    hard_divide_day_int: int = int(hard_divide_day)
-
-    divide_datetime: datetime.datetime = datetime.datetime.now() - datetime.timedelta(
-        days=hard_divide_day_int
-    )
-    animeroom_queryset = AnimeRoom.objects.all().filter(updated_at__lte=divide_datetime)
-    animeroom_queryset.delete(hard=True)
-    animeroom_queryset.save()
+    """Hard delete AnimeRooms that have outlived the hard retention."""
+    days = int(os.getenv("HARD_DIVIDE_DAY", default="365"))
+    AnimeRoom.objects.all().filter(updated_at__lte=_cutoff(days)).delete(hard=True)
 
 
 def animeuser_auto_logical_delete():
-    """一定の日数以上生き残ってしまったAnimeUserを論理削除します"""
-    logical_divide_day: str = os.getenv("LOGICAL_DIVIDE_DAY", default="3")
-    logical_divide_day_int: int = int(logical_divide_day)
-
-    divide_datetime: datetime.datetime = datetime.datetime.now() - datetime.timedelta(
-        days=logical_divide_day_int
-    )
-    animeroom_queryset = AnimeUser.objects.alive().filter(
-        updated_at__lte=divide_datetime
-    )
-    animeroom_queryset.delete()
-    animeroom_queryset.save()
+    """Logically delete AnimeUsers that have outlived the logical retention."""
+    days = int(os.getenv("LOGICAL_DIVIDE_DAY", default="3"))
+    AnimeUser.objects.alive().filter(updated_at__lte=_cutoff(days)).delete()
 
 
 def animeuser_auto_hard_delete():
-    """一定の日数以上生き残ってしまったAnimeUserを削除します"""
-    hard_divide_day: str = os.getenv("HARD_DIVIDE_DAY", default="365")
-    hard_divide_day_int: int = int(hard_divide_day)
-
-    divide_datetime: datetime.datetime = datetime.datetime.now() - datetime.timedelta(
-        days=hard_divide_day_int
-    )
-    animeroom_queryset = AnimeUser.objects.all().filter(updated_at__lte=divide_datetime)
-    animeroom_queryset.delete(hard=True)
-    animeroom_queryset.save()
+    """Hard delete AnimeUsers that have outlived the hard retention."""
+    days = int(os.getenv("HARD_DIVIDE_DAY", default="365"))
+    AnimeUser.objects.all().filter(updated_at__lte=_cutoff(days)).delete(hard=True)
 
 
 def animereaction_auto_hard_delete():
-    """一定の日数以上生き残ってしまったAnimeReactionを削除します"""
-    hard_divide_day: str = os.getenv("REACTION_HARD_DIVIDE_DAY", default="90")
-    hard_divide_day_int: int = int(hard_divide_day)
+    """Hard delete AnimeReactions that have outlived the hard retention."""
+    days = int(os.getenv("REACTION_HARD_DIVIDE_DAY", default="90"))
+    AnimeReaction.objects.all().filter(created_at__lte=_cutoff(days)).delete(hard=True)
 
-    divide_datetime: datetime.datetime = datetime.datetime.now() - datetime.timedelta(
-        days=hard_divide_day_int
-    )
-    animeroom_queryset = AnimeReaction.objects.all().filter(
-        created_at__lte=divide_datetime
-    )
-    animeroom_queryset.delete(hard=True)
-    animeroom_queryset.save()
+
+ALL_JOBS = (
+    animeroom_auto_logical_delete,
+    animeuser_auto_logical_delete,
+    animeroom_auto_hard_delete,
+    animeuser_auto_hard_delete,
+    animereaction_auto_hard_delete,
+)

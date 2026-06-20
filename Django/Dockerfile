@@ -1,23 +1,35 @@
-FROM python:3.11
+# syntax=docker/dockerfile:1
+FROM python:3.13-slim-bookworm
 
-# 作業ディレクトリを設定
+# Bring in the uv binary from the official image.
+COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /bin/
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBCONF_NOWARNINGS=yes \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    # Keep the virtualenv outside the app dir so a bind-mount over the source
+    # (docker-compose) does not shadow the installed dependencies.
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
 WORKDIR /usr/src/app
 
-# 環境変数を設定
-ENV PYTHONPATH /usr/src/app
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV DEBCONF_NOWARNINGS yes
+# cron drives the periodic retention cleanup (see entrypoint.sh).
+# psycopg[binary] bundles libpq, so no system postgres client is required.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cron \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# 必須ソフトウェアのインストール
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends graphviz cron && \
-    apt-get -y clean && \
-    rm -rf /var/lib/apt/lists/*
+# Install dependencies first for better layer caching.
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
 
-# poetry環境構築
-RUN pip install --no-cache-dir poetry==1.2.0
-RUN poetry self update
-COPY pyproject.toml poetry.lock /usr/src/app/
-RUN poetry config virtualenvs.create false
-RUN poetry install --no-root && rm -rf ~/.cache/pypoetry/{cache,artifacts}
+COPY . .
+
+EXPOSE 8000
+
+CMD ["sh", "entrypoint.sh"]

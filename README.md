@@ -14,12 +14,17 @@
 [![user-par-day](https://img.shields.io/endpoint?url=https://d-party.net/api/shields/user-par-day)](https://d-party.net)
 
 [![Docker](https://img.shields.io/badge/-Docker-EEE.svg?logo=docker&style=flat)](https://www.docker.com/)
-[![Python](https://img.shields.io/badge/Python:3.10-F9DC3E.svg?logo=python&style=flat)](https://www.python.org/)
-[![Django:4.x](https://img.shields.io/badge/Django:4.0-092E20.svg?logo=django&style=flat)](https://www.djangoproject.com/)
+[![Python](https://img.shields.io/badge/Python:3.13-F9DC3E.svg?logo=python&style=flat)](https://www.python.org/)
+[![Django:5.2](https://img.shields.io/badge/Django:5.2-092E20.svg?logo=django&style=flat)](https://www.djangoproject.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL:16-336791.svg?logo=postgresql&style=flat&logoColor=white)](https://www.postgresql.org/)
 [![Nginx](https://img.shields.io/badge/-Nginx-5.svg?logo=nginx&style=flat)](https://www.nginx.co.jp/)
-[![Redis](https://img.shields.io/badge/Redis:6.2-511.svg?logo=redis&style=flat)](https://redis.io/)
+[![Redis](https://img.shields.io/badge/Redis:7-511.svg?logo=redis&style=flat)](https://redis.io/)
+[![uv](https://img.shields.io/badge/uv-managed-DE5FE9.svg?logo=uv&style=flat)](https://docs.astral.sh/uv/)
 
 d-Party のバックエンド部分を担当するフォルダ
+
+> 開発・エージェント向けの詳細は [`AGENTS.md`](AGENTS.md) を参照。
+> （Python 3.13 · Django 5.2 · PostgreSQL · uv · ruff へモダナイズ済み）
 
 ## 初回起動コマンド
 
@@ -28,19 +33,15 @@ d-Party のバックエンド部分を担当するフォルダ
 従って初回起動時は以下のコマンドで実行する必要があります。
 
 ```bash
-docker-compose build --no-cache
-docker-compose up -d
-docker-compose exec django python manage.py makemigrations
-docker-compose exec django python manage.py makemigrations streamer
-docker-compose exec django python manage.py migrate
-docker-compose exec django python manage.py collectstatic
-docker-compose down
-docker-compose up -d
-docker-compose up nginx -d
+docker compose build --no-cache
+docker compose up -d
+docker compose exec django python manage.py makemigrations streamer
+docker compose exec django python manage.py migrate
+docker compose exec django python manage.py collectstatic --noinput
 ```
 
-また 2 回目以降の起動であれば、`docker-compose up -d`のみで起動することができます。
-最後の`docker-compose up nginx -d`はリソースが十分でない場合に必要になるかもしれません。
+また 2 回目以降の起動であれば、`docker compose up -d`のみで起動することができます。
+`django` コンテナは `postgres` の healthcheck 完了を待ってから起動します。
 
 ## 開発
 
@@ -50,8 +51,8 @@ settings.py で`debug = True`においてコンテナを起動させた場合に
 
 開発環境を初期化したい場合以下の手順をたどってください
 
-1. コンテナの停止(`docker-compose down`)
-2. MySQL ディレクトリにある data ディレクトリを中身ごと削除する
+1. コンテナの停止(`docker compose down`)
+2. `Postgres` ディレクトリにある data ディレクトリを中身ごと削除する
 3. Django/streamer ディレクトリにある migrations ディレクトリを中身事削除する
 
 ### テストを実行
@@ -59,7 +60,18 @@ settings.py で`debug = True`においてコンテナを起動させた場合に
 テストを実行したい場合、全てのコンテナを立ち上げてから、以下のコマンドを実行してください。
 
 ```bash
-docker-compose exec django pytest --cov
+docker compose exec django pytest --cov
+```
+
+> ローカル（コンテナ無し）でも `cd Django && uv run pytest` で実行できます。
+> テストは `conftest.py` で InMemoryChannelLayer を使うため Redis は不要です。
+
+### Lint / Format（ruff）
+
+```bash
+cd Django
+uvx ruff format .
+uvx ruff check . --fix
 ```
 
 ### ライセンスチェックを実行
@@ -67,7 +79,7 @@ docker-compose exec django pytest --cov
 ライセンスチェックを実行したい場合、全てのコンテナを立ち上げてから、以下のコマンドを実行してください。
 
 ```bash
-docker-compose exec django pip-licenses
+docker compose exec django pip-licenses
 ```
 
 ### 依存関係の可視化
@@ -75,13 +87,15 @@ docker-compose exec django pip-licenses
 依存関係の可視化を実行したい場合、全てのコンテナを立ち上げてから、以下のコマンドを実行してください。
 
 ```bash
-docker-compose exec django pipdeptree --graph-output dot > dependencies.dot
+docker compose exec django pipdeptree --graph-output dot > dependencies.dot
 ```
 
 ### cronの標準出力/エラー出力を取得
 
+保持期間クリーンアップ（`manage.py cleanup`）はコンテナ内 system cron が実行します。
+
 ```bash
-docker-compose exec django cat /var/log/cron.log
+docker compose exec django cat /var/log/cron.log
 ```
 
 ### その他

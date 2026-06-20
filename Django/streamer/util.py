@@ -1,5 +1,5 @@
-from uuid import UUID
 from json import JSONEncoder
+from uuid import UUID
 
 
 def is_valid_uuid(uuid_to_test, version=4):

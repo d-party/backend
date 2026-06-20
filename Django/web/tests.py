@@ -1,8 +1,9 @@
-import datetime
-from django.test import Client, TestCase
-from streamer.factories import AnimeRoomFactory, AnimeUserFactory
-import pytest
 from http import HTTPStatus
+
+import pytest
+from django.test import Client, TestCase
+
+from streamer.factories import AnimeRoomFactory
 
 
 class TestIndexView(TestCase):

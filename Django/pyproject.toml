@@ -1,64 +1,70 @@
-[tool.poetry]
-name = "d-Party"
-version = "0.1.0"
-description = ""
-authors = ["U-Not <euno.eng@gmail.com>"]
-readme = "README.md"
-packages = [{include = "d_party"}]
+[project]
+name = "d-party-backend"
+version = "1.0.0"
+description = "d-party backend — Django Channels powered watch-together service for dアニメストア"
+authors = [{ name = "U-Not", email = "euno.eng@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = [
+    "django>=5.2,<6.0",
+    "channels>=4.2",
+    "channels-redis>=4.2",
+    "daphne>=4.1",
+    "djangorestframework>=3.15",
+    "django-filter>=24.3",
+    "djangochannelsrestframework>=1.2",
+    "django-jazzmin>=3.0",
+    "django-axes>=7.0",
+    "django-prometheus>=2.3",
+    "django-extensions>=3.2.3",
+    "pydantic>=2.9",
+    "psycopg[binary]>=3.2",
+    "pandas>=2.2",
+    "gunicorn>=23.0",
+    "uvicorn[standard]>=0.34",
+    "uvicorn-worker>=0.3",
+    "python-dotenv>=1.0",
+    "cryptography>=44.0",
+    "packaging>=24.2",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-Django = "^4.1.1"
-gunicorn = "^20.1.0"
-mysqlclient = "^2.1.1"
-channels-redis = "^4.0.0"
-uvicorn = {extras = ["standard"], version = "^0.19.0"}
-django-debug-toolbar = "^3.7.0"
-django-jazzmin = "^2.4.0"
-pydantic = "^1.10.2"
-django-boost = "^2.1"
-djangorestframework = "^3.14.0"
-django-filter = "^22.1"
-djangochannelsrestframework = "^1.1.0"
-pandas = "^1.5.0"
-django-request = "^1.6.1"
-django-crontab = "^0.7.1"
-django-dotenv = "^1.4.2"
-django-axes = "^5.39.0"
-django-extensions = "^3.2.1"
-Werkzeug = "^2.2.2"
-pyparsing = "^3.0.9"
-pydot = "^1.4.2"
-django-dynamic-shields = "^0.2.1"
-django-debreach = "^2.1.0"
-django-prometheus = "^2.2.0"
-django-cryptography = "^1.1"
-daphne = "^4.0.0"
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "factory-boy>=3.3",
+    "ruff>=0.8",
+    "django-debug-toolbar>=4.4",
+    "werkzeug>=3.1",
+    "pip-licenses>=5.0",
+    "pipdeptree>=2.23",
+]
 
+[tool.uv]
+# This project is a deployable application, not a distributable package.
+package = false
 
-[tool.poetry.dev-dependencies]
-pytest = "^7.1.3"
-pytest-django = "^4.5.2"
-black = "^22.8.0"
-pytest-asyncio = "^0.20.1"
-factory-boy = "^3.2.1"
-pytest-cov = "^4.0.0"
-pytest-profiling = "^1.7.0"
-lizard = "^1.17.10"
-pip-licenses = "^4.0.3"
-pipdeptree = "^2.3.1"
-graphviz = "^0.20"
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+extend-exclude = ["**/migrations/*"]
 
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ", "C4"]
+ignore = [
+    "E501",   # line length is handled by the formatter
+    "B008",   # function calls in argument defaults are idiomatic in Django/DRF
+    "DJ008",  # __str__ on every model is optional here
+]
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.black]
-target-version = ['py310']
+[tool.ruff.lint.per-file-ignores]
+# The Channels ASGI entrypoint must initialise Django before importing routing.
+"d_party/asgi.py" = ["E402"]
+# Pre-existing test-only smells we intentionally leave untouched.
+"**/tests.py" = ["E711", "E721", "E722", "F811", "F841"]
 
 [tool.pytest.ini_options]
-
-DJANGO_SETTINGS_MODULE="d_party.settings"
-python_files = "tests.py test_*.py *_tests.py"
-pytest_plugins = ["pytest-django","pytest_profiling"]
+DJANGO_SETTINGS_MODULE = "d_party.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+asyncio_mode = "auto"

@@ -1,7 +1,9 @@
-from django.db import models
 import uuid
-from django_boost.models.mixins import LogicalDeletionMixin
-from django_cryptography.fields import encrypt
+
+from django.db import models
+
+from .fields import EncryptedCharField
+from .mixins import LogicalDeletionMixin
 
 
 class AnimeRoom(LogicalDeletionMixin):
@@ -15,7 +17,7 @@ class AnimeRoom(LogicalDeletionMixin):
 
 class AnimeUser(LogicalDeletionMixin):
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user_name = encrypt(models.CharField(default="user", max_length=20))
+    user_name = EncryptedCharField(default="user", max_length=20)
     room_id = models.ForeignKey(
         AnimeRoom, on_delete=models.CASCADE, related_name="inroom"
     )

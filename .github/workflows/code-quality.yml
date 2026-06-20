@@ -44,11 +44,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: |
-          docker-compose build django
+          docker compose build django
       - name: Run Dockle
         uses: erzz/dockle-action@v1
         with:
-          image: d-party-backend_django
+          image: backend-django
           exit-code: 1
           failure-threshold: fatal
   actionlint:

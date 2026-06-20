@@ -1,20 +1,40 @@
 from django.contrib import admin
-from .models import AnimeRoom, AnimeUser, AnimeReaction
-from django_boost.admin import LogicalDeletionModelAdmin
+from django.utils.timezone import now
 
-# Register your models here.
+from .models import AnimeReaction, AnimeRoom, AnimeUser
+
+
+@admin.action(description="Logically delete selected items")
+def logically_delete(modeladmin, request, queryset):
+    queryset.update(deleted_at=now())
+
+
+@admin.action(description="Revive selected items")
+def revive(modeladmin, request, queryset):
+    queryset.update(deleted_at=None)
+
+
+class LogicalDeletionModelAdmin(admin.ModelAdmin):
+    """Admin base for models using logical deletion."""
+
+    actions = [logically_delete, revive]
+    readonly_fields = ("deleted_at",)
+
+    def get_queryset(self, request):
+        # Show every row (including logically deleted) in the admin.
+        return self.model.objects.get_queryset()
 
 
 @admin.register(AnimeRoom)
 class AnimeRoomAdmin(LogicalDeletionModelAdmin):
-    pass
+    list_display = ("room_id", "part_id", "num_people", "created_at", "deleted_at")
 
 
 @admin.register(AnimeUser)
 class AnimeUserAdmin(LogicalDeletionModelAdmin):
-    pass
+    list_display = ("user_id", "is_host", "created_at", "deleted_at")
 
 
 @admin.register(AnimeReaction)
 class AnimeReactionAdmin(LogicalDeletionModelAdmin):
-    pass
+    list_display = ("reaction_id", "reaction_type", "created_at", "deleted_at")

@@ -10,9 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.0/ref/settings/
 """
 
-from pathlib import Path
 import os
 import socket
+from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,7 +23,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ["SECRET_KEY"]
-CRYPTOGRAPHY_KEY = SECRET_KEY
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ["DEBUG"] == "1"
@@ -50,19 +49,17 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "django_crontab",
     "django_extensions",
     "channels",
-    "debug_toolbar",
-    "django_boost",
     "rest_framework",
     "axes",
-    "request",
     "django_prometheus",
     "streamer",
     "web",
     "api",
 ]
+if DEBUG:
+    INSTALLED_APPS += ["debug_toolbar"]
 
 AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesBackend",
@@ -76,11 +73,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "request.middleware.RequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "axes.middleware.AxesMiddleware",
-    "debreach.middleware.RandomCommentMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 if DEBUG:
@@ -105,10 +100,12 @@ TEMPLATES = [
 ]
 
 # redis
+REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
+REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [("redis", 6379)]},
+        "CONFIG": {"hosts": [(REDIS_HOST, REDIS_PORT)]},
     }
 }
 
@@ -118,9 +115,9 @@ CHANNEL_LAYERS = {
 DATABASES = {
     "default": {
         "ENGINE": os.environ["DATABASE_ENGINE"],
-        "NAME": os.environ["MYSQL_DATABASE"],
+        "NAME": os.environ["POSTGRES_DB"],
         "USER": os.environ["DATABASE_USER"],
-        "PASSWORD": os.environ["MYSQL_ROOT_PASSWORD"],
+        "PASSWORD": os.environ["POSTGRES_PASSWORD"],
         "HOST": os.environ["DATABASE_HOST"],
         "PORT": os.environ["DATABASE_PORT"],
         "TEST": {
@@ -287,7 +284,9 @@ ASGI_APPLICATION = "d_party.asgi.application"
 # axes
 AXES_FAILURE_LIMIT = 10
 AXES_COOLOFF_TIME = 6
-AXES_ONLY_USER_FAILURES = True
+# Preserve the previous "lock by username only" behaviour
+# (replaces the deprecated AXES_ONLY_USER_FAILURES).
+AXES_LOCKOUT_PARAMETERS = ["username"]
 AXES_RESET_ON_SUCCESS = True
 
 if DEBUG:
@@ -296,47 +295,8 @@ if DEBUG:
 # django-extensions
 RUNSERVERPLUS_SERVER_ADDRESS_PORT = "0.0.0.0:8000"
 
-# django-htmlmin
-
-EXCLUDE_FROM_MINIFYING = ("^admin/",)
-EXCLUDE_TAGS = set(["pre", "script", "textarea"])
-
-# django-crontab
-
-if DEBUG:
-    CRON_SCHEDULE = "* * * * *"
-else:
-    CRON_SCHEDULE = "0 0 * * *"
-
-CRONJOBS = [
-    (
-        CRON_SCHEDULE,
-        "streamer.cron.animeroom_auto_logical_delete",
-        ">> /var/log/cron.log",
-    ),
-    (
-        CRON_SCHEDULE,
-        "streamer.cron.animeuser_auto_logical_delete",
-        ">> /var/log/cron.log",
-    ),
-    (
-        CRON_SCHEDULE,
-        "streamer.cron.animeroom_auto_hard_delete",
-        ">> /var/log/cron.log",
-    ),
-    (
-        CRON_SCHEDULE,
-        "streamer.cron.animeuser_auto_hard_delete",
-        ">> /var/log/cron.log",
-    ),
-    (
-        CRON_SCHEDULE,
-        "streamer.cron.animereaction_auto_hard_delete",
-        ">> /var/log/cron.log",
-    ),
-]
-if DEBUG:
-    CRONTAB_COMMAND_SUFFIX = "2>&1"
+# Retention cleanup (streamer.management.commands.cleanup) is scheduled by the
+# container's system cron — see entrypoint.sh / docker-compose.
 
 if DEBUG:
     hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())

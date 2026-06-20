@@ -1,6 +1,6 @@
 import factory
 import factory.fuzzy
-import uuid
+
 from .models import AnimeRoom, AnimeUser
 
 

@@ -16,12 +16,12 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "d_party.settings")
 # application = get_asgi_application()
 django_asgi_app = get_asgi_application()
 
-from channels.routing import ProtocolTypeRouter
-
-from channels.routing import URLRouter
 from channels.auth import AuthMiddlewareStack
+from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import OriginValidator
+
 import streamer.routing
+
 from . import settings
 
 allowed_hosts = [

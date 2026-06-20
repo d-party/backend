@@ -1,7 +1,8 @@
 import os
-from rest_framework import status
-from rest_framework.test import APITestCase, APIClient, APIRequestFactory
+
 import pytest
+from rest_framework import status
+from rest_framework.test import APIClient, APITestCase
 
 
 class TestVersionCheckAPI(APITestCase):

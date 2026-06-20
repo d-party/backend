@@ -8,23 +8,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
-      - name: run docker-compose
+      - uses: actions/checkout@v4
+      - name: run docker compose
         run: |
-          docker-compose up -d
-      - name: Sleep for 30 seconds
-        uses: jakejarvis/wait-action@master
-        with:
-          time: "30s"
+          docker compose up -d
       - name: init containers
         run: |
-          docker-compose exec -T django python manage.py makemigrations;
-          docker-compose exec -T django python manage.py makemigrations streamer;
-          docker-compose exec -T django python manage.py migrate;
-          docker-compose exec -T django python manage.py collectstatic --noinput;
+          docker compose exec -T django python manage.py makemigrations;
+          docker compose exec -T django python manage.py makemigrations streamer;
+          docker compose exec -T django python manage.py migrate;
+          docker compose exec -T django python manage.py collectstatic --noinput;
       - name: check licenses
         run: >
-          docker-compose exec -T django pip-licenses
+          docker compose exec -T django pip-licenses
           --with-system
           --allow-only="
             Apache Software License;
