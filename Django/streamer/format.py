@@ -13,7 +13,7 @@ as the ``ResponseBaseFormat`` base class (this matched pydantic v1's default
 
 from uuid import UUID
 
-from pydantic import BaseModel, SerializeAsAny
+from pydantic import BaseModel, SerializeAsAny, field_validator
 
 
 class User(BaseModel):
@@ -61,6 +61,16 @@ class Option(BaseModel):
     paused: str
     rate: str
     part_id: str
+
+    @field_validator("paused", "rate", mode="before")
+    @classmethod
+    def _coerce_to_str(cls, value):
+        # The extension sends `paused` as a bool and `rate` as a number; pydantic
+        # v1 stringified these (e.g. False -> "False"), and the client relies on
+        # that exact form (`option["paused"] === "False"`). Preserve it under v2.
+        if value is None or isinstance(value, str):
+            return value
+        return str(value)
 
 
 class VideoOperation(ResponseBaseFormat):
