@@ -1,51 +1,7 @@
-from http import HTTPStatus
-
-import pytest
-from django.test import Client, TestCase
-
-from streamer.factories import AnimeRoomFactory
-
-
-class TestIndexView(TestCase):
-    def setUp(self) -> None:
-        self.client = Client()
-        self.endpoint = "/"
-
-    @pytest.mark.django_db
-    def test_ok_200(self):
-        response = self.client.get(self.endpoint)
-        assert response.status_code == HTTPStatus.OK
-
-
-class TestUsageView(TestCase):
-    def setUp(self) -> None:
-        self.client = Client()
-        self.endpoint = "/usage"
-
-    @pytest.mark.django_db
-    def test_ok_200(self):
-        response = self.client.get(self.endpoint)
-        assert response.status_code == HTTPStatus.OK
-
-
-class TestAnimeRobbyView(TestCase):
-    def setUp(self) -> None:
-        self.client = Client()
-        self.anime_room = AnimeRoomFactory()
-        self.endpoint = "/anime-store/lobby/{}"
-
-    @pytest.mark.django_db
-    def test_ok_200(self):
-        response = self.client.get(self.endpoint.format(str(self.anime_room.room_id)))
-        assert response.status_code == HTTPStatus.OK
-
-    @pytest.mark.django_db
-    def test_ok_404(self):
-        response = self.client.get(self.endpoint.format("hello"))
-        assert response.status_code == HTTPStatus.NOT_FOUND
-
-    @pytest.mark.django_db
-    def test_ok_404(self):
-        self.anime_room.delete()
-        response = self.client.get(self.endpoint.format(str(self.anime_room.room_id)))
-        assert response.status_code == HTTPStatus.NOT_FOUND
+# ランディング（/）・使い方（/usage）・ルーム遷移ロビー（/anime-store/lobby/...）は
+# React フロントエンド（frontend サブモジュール）へ移行し、Django 側のルート/ビューは
+# 廃止した。ロビーの room_id → リダイレクト URL 解決は api.views へ移設しており、
+# その振る舞いは api/tests.py で検証する。
+#
+# web アプリに残るのは管理者向けの admin/chart（要ログイン）のみで、公開ページの
+# ビューは存在しないため、ここにテストは無い。
