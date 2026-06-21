@@ -47,6 +47,21 @@ docker compose exec django python manage.py collectstatic --noinput
 
 settings.py で`debug = True`においてコンテナを起動させた場合に 8000 ポートにデプロイされている Django コンテナに直接アクセスすることで、django-debug-toolbar が有効に働きます。
 
+### 環境変数（dev / prod の出し分け）
+
+`DEBUG` や `MY_DOMAIN` などの環境固有値は、monorepo ルートの env ファイルから
+Compose 経由で注入されます（backend 単体ではなく、ルートで `docker compose` を実行する）。
+
+- **dev**（ルート `.env.dev`、`DEBUG=1`）… `entrypoint.sh` が `runserver` を起動し、
+  `localhost:8000` で django-debug-toolbar が有効。
+- **prod**（ルート `.env.prod`、`DEBUG=0`）… `gunicorn`（uvicorn worker）で ASGI 配信。
+
+> `manage.py` は `/env_files/.env.global` を `override=True` で読み込みます。そのため
+> **共有値のみ** `.env.global` に置き、環境固有値（`DEBUG` / `MY_DOMAIN` 等）は
+> ルートの `.env.dev` / `.env.prod` に分離しています（`.env.global` に残すと prod 値が
+> dev 値で上書きされるため）。詳細はルートの
+> [README の「環境設定」](https://github.com/d-party/d-party#環境設定dev--prod-の出し分け)を参照。
+
 ### 開発環境を初期化
 
 開発環境を初期化したい場合以下の手順をたどってください
