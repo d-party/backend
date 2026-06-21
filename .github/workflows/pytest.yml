@@ -32,5 +32,8 @@ jobs:
           file: ./Django/coverage.xml
           env_vars: OS,PYTHON
           name: codecov-umbrella
-          fail_ci_if_error: true
+          # Coverage upload needs CODECOV_TOKEN; on protected branches a missing
+          # token otherwise fails the whole job. Tests themselves gate CI, so a
+          # failed upload should not be fatal.
+          fail_ci_if_error: false
           verbose: true

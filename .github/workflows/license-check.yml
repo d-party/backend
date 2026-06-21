@@ -31,6 +31,8 @@ jobs:
             Apache-2.0;
             BSD License;BSD;
             BSD-3-Clause;BSD-2-Clause;0BSD;
+            BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0;
+            Zlib;CC0-1.0;
             Freeware;
             GNU General Public License (GPL);
             GNU Lesser General Public License v3 or later (LGPLv3+);
