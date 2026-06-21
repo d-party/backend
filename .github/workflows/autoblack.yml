@@ -23,7 +23,6 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: ruff format + check
-        working-directory: ./Django
         run: |
           uvx ruff format .
           uvx ruff check --fix .

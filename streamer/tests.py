@@ -93,7 +93,7 @@ class TestAnimePartyConsumer(TransactionTestCase):
         )
         response = await communicator.receive_json_from()
         assert response["action"] == "server_message"
-        assert response["message"] == "failed_join"
+        assert response["message_type"] == "failed_join"
         await communicator.disconnect()
 
     @pytest.mark.django_db(transaction=True)

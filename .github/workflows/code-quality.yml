@@ -12,7 +12,7 @@ jobs:
       - name: Lizard Runner
         uses: Uno-Takashi/Lizard-Runner@v3
         with:
-          path: "./Django"
+          path: "."
           language: "python"
           exclude: "tests.py"
   dockerlint:
@@ -30,21 +30,21 @@ jobs:
         run: |
           npm install -g dockerlint
       - run: |
-          dockerlint ./Django/Dockerfile
+          dockerlint ./Dockerfile
   hadolint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: hadolint/hadolint-action@v2.0.0
         with:
-          dockerfile: ./Django/Dockerfile
+          dockerfile: ./Dockerfile
           ignore: "DL3008,SC2174,DL3009,DL3059,SC3009"
   dockle:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: |
-          docker compose build django
+          docker build -t backend-django .
       - name: Run Dockle
         uses: erzz/dockle-action@v1
         with:

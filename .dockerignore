@@ -1,0 +1,24 @@
+# The build context is the repository root (django project). Keep the image
+# lean and free of dev/CI-only files and local secrets.
+.git
+.github
+.venv
+.ruff_cache
+.mypy_cache
+.pytest_cache
+__pycache__/
+*.pyc
+htmlcov/
+.coverage*
+coverage.xml
+static/
+# Env files are mounted at runtime (compose) / provided via CI env, not baked.
+.env
+.env.*
+# Docs and repo meta
+*.md
+LICENSE
+.yamllint
+.textlintrc.json
+.dockleignore
+.dockerignore

@@ -7,33 +7,68 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The backend repository is the django server only; postgres and redis are
+    # provided as service containers (the orchestration compose lives in the
+    # d-party monorepo root).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: d_party
+          POSTGRES_USER: d_party
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U d_party -d d_party"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      SECRET_KEY: django-insecure-ci
+      DEBUG: "1"
+      MY_DOMAIN: localhost
+      D_ANIME_STORE_DOMAIN: animestore.docomo.ne.jp
+      TIME_ZONE: Asia/Tokyo
+      LANGUAGE_CODE: ja
+      DATABASE_ENGINE: django_prometheus.db.backends.postgresql
+      DATABASE_USER: d_party
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      POSTGRES_DB: d_party
+      POSTGRES_PASSWORD: password
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      CHROME_EXTENSION_REQUIRED_VERSION: 1.0.0
     steps:
       - uses: actions/checkout@v4
-      - name: run docker compose
-        # Only the django service (and its postgres/redis deps) is needed for
-        # tests. Starting the whole stack would try to build the `frontend`
-        # service, whose `context: ../frontend` does not exist in this
-        # backend-only checkout (it is a sibling submodule of the monorepo).
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: install dependencies
+        run: uv sync --frozen
+      - name: migrate
         run: |
-          docker compose up -d django
-      - name: init containers
-        run: |
-          docker compose exec -T django python manage.py makemigrations;
-          docker compose exec -T django python manage.py makemigrations streamer;
-          docker compose exec -T django python manage.py migrate;
-          docker compose exec -T django python manage.py collectstatic --noinput;
+          uv run python manage.py makemigrations
+          uv run python manage.py makemigrations streamer
+          uv run python manage.py migrate
       - name: run pytest
-        run: |
-          docker compose exec -T django pytest --cov --cov-report=xml
+        run: uv run pytest --cov --cov-report=xml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./Django/coverage.xml
+          file: ./coverage.xml
           env_vars: OS,PYTHON
           name: codecov-umbrella
-          # Coverage upload needs CODECOV_TOKEN; on protected branches a missing
-          # token otherwise fails the whole job. Tests themselves gate CI, so a
-          # failed upload should not be fatal.
+          # Coverage upload needs CODECOV_TOKEN; tests gate CI, so a failed
+          # upload (e.g. missing token on a protected branch) must not be fatal.
           fail_ci_if_error: false
-          verbose: true

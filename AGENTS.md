@@ -52,34 +52,33 @@ WebSocket（`/anime-store/party/`）を Django へ振り分けます。
 
 ## レイアウト
 
+# このリポジトリ（backend）は django サーバ単体。nginx / postgres / redis /
+# prometheus / grafana / adminer 等のオーケストレーション（docker-compose）は
+# d-party モノレポのルートにあり、本リポジトリは build context として参照される。
 ```
-backend/
-  docker-compose.yml        nginx · django · postgres · redis · adminer · prometheus · grafana · cadvisor · node-exporter
-  .env.global               共有 env（ドメイン・Postgres 認証情報・DEBUG）
-  Postgres/                 Postgres 用 env（data/ は gitignore）
-  nginx/ prometheus/ grafana/   各サービス設定
-  Django/
-    pyproject.toml          uv（依存・ruff・pytest 設定）
-    uv.lock
-    Dockerfile              python:3.13-slim + uv（venv は /opt/venv）
-    entrypoint.sh           cron 登録 → runserver / gunicorn
-    gunicorn.conf.py        uvicorn-worker
-    conftest.py             テスト時は InMemoryChannelLayer に差し替え
-    manage.py               /env_files/*.env を読み込み
-    .env.django             Django 用 env（DB/Redis ホスト・しきい値・CRON_SCHEDULE）
-    d_party/                settings.py · asgi.py（ProtocolTypeRouter）· urls.py
-    streamer/               ★同時視聴のコア
-      consumers.py          AnimePartyConsumer（create/join/leave/video_operation/sync/reaction…）
-      format.py             pydantic v2 メッセージ定義（公開プロトコル）
-      models.py             AnimeRoom / AnimeUser / AnimeReaction / AnimeRoomHistory
-      mixins.py             LogicalDeletionMixin（alive/dead/delete(hard=)）
-      fields.py             EncryptedCharField（保存時暗号化）
-      routing.py            ws: anime-store/party/
-      cron.py               保持期間クリーンアップ関数
-      management/commands/cleanup.py
-    api/                    DRF（統計 / shields バッジ / 拡張機能バージョン確認）
-    web/                    管理者向け統計チャートのテンプレート（admin/chart のみ。
-                            LP・使い方・ロビーは frontend へ移行）
+backend/   ← リポジトリ直下が django プロジェクト
+  pyproject.toml          uv（依存・ruff・pytest 設定）
+  uv.lock
+  Dockerfile              python:3.13-slim + uv（venv は /opt/venv）
+  .dockerignore           イメージから dev/CI 用ファイルを除外
+  entrypoint.sh           cron 登録 → runserver / gunicorn
+  gunicorn.conf.py        uvicorn-worker
+  conftest.py             テスト時は InMemoryChannelLayer に差し替え
+  manage.py               /env_files/*.env があれば読み込み（無ければ環境変数）
+  .env.django             Django 用 env（DB/Redis ホスト・しきい値・CRON_SCHEDULE）
+  d_party/                settings.py · asgi.py（ProtocolTypeRouter）· urls.py
+  streamer/               ★同時視聴のコア
+    consumers.py          AnimePartyConsumer（create/join/leave/video_operation/sync/reaction…）
+    format.py             pydantic v2 メッセージ定義（公開プロトコル）
+    models.py             AnimeRoom / AnimeUser / AnimeReaction / AnimeRoomHistory
+    mixins.py             LogicalDeletionMixin（alive/dead/delete(hard=)）
+    fields.py             EncryptedCharField（保存時暗号化）
+    routing.py            ws: anime-store/party/
+    cron.py               保持期間クリーンアップ関数
+    management/commands/cleanup.py
+  api/                    DRF（統計 / shields バッジ / 拡張機能バージョン確認）
+  web/                    管理者向け統計チャートのテンプレート（admin/chart のみ。
+                          LP・使い方・ロビーは frontend へ移行）
 ```
 
 ### Request / data flow
@@ -99,23 +98,25 @@ Compose のサービス名で解決し、k3s 等へ移行する際は env（Conf
 
 | 変数 | 既定（Docker） | 用途 | 置き場所 |
 |---|---|---|---|
-| `DATABASE_HOST` / `DATABASE_PORT` | `postgres` / `5432` | Django → PostgreSQL | `Django/.env.django` |
-| `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | Channels レイヤ | `Django/.env.django` |
-| `DJANGO_UPSTREAM` | `django:8000` | nginx → Django | `.env.global` |
-| `FRONTEND_UPSTREAM` | `frontend:3000` | nginx → フロント | `.env.global` |
-| `GRAFANA_UPSTREAM` | `grafana:3000` | nginx → Grafana | `.env.global` |
+| `DATABASE_HOST` / `DATABASE_PORT` | `postgres` / `5432` | Django → PostgreSQL | `.env.django` |
+| `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | Channels レイヤ | `.env.django` |
+| `DJANGO_UPSTREAM` | `django:8000` | nginx → Django | ルート `.env.global` |
+| `FRONTEND_UPSTREAM` | `frontend:3000` | nginx → フロント | ルート `.env.global` |
+| `GRAFANA_UPSTREAM` | `grafana:3000` | nginx → Grafana | ルート `.env.global` |
 
-- nginx のアップストリームは `nginx/templates/http.conf.template` に定義し、nginx 公式イメージの
-  envsubst が `.env.global` の値で展開する（`nginx/conf.d/*.conf` は生成物で gitignore）。
-  アプリ側の nginx 設定やコードを触らず、env だけで解決先を変更できる。
+- nginx / `.env.global` 等のインフラ設定は **d-party モノレポのルート**にある。アプリ側の
+  nginx 設定やコードを触らず、env だけで解決先を変更できる。
 - k3s では各 Service の DNS（例: `django.<ns>.svc.cluster.local:8000`）を上記変数へ設定する。
-  `resolver`（`nginx/nginx.conf`）は Docker の埋め込み DNS 用なので、cluster DNS に合わせて調整する。
 
 ## Common commands
 
 ### 起動（Docker, 推奨）
 
+docker-compose は **モノレポのルート**にある（このリポジトリは django 単体）。
+全サービスを起動する場合はルートで:
+
 ```bash
+# d-party モノレポのルートで
 docker compose build
 docker compose up -d
 # 初回のみ
@@ -129,7 +130,6 @@ docker compose exec django python manage.py collectstatic --noinput
 ### ローカル（uv, コンテナ無し）
 
 ```bash
-cd Django
 uv sync                       # 依存をインストール（.venv 作成）
 uv run python manage.py check
 uv run pytest                 # conftest.py が InMemoryChannelLayer を使うため Redis 不要

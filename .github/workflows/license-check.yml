@@ -9,26 +9,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: run docker compose
-        # Only the django service (and its postgres/redis deps) is needed here.
-        # Starting the whole stack would try to build the `frontend` service,
-        # whose `context: ../frontend` does not exist in this backend-only
-        # checkout (it is a sibling submodule of the monorepo).
-        run: |
-          docker compose up -d django
-      - name: init containers
-        run: |
-          docker compose exec -T django python manage.py makemigrations;
-          docker compose exec -T django python manage.py makemigrations streamer;
-          docker compose exec -T django python manage.py migrate;
-          docker compose exec -T django python manage.py collectstatic --noinput;
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: install dependencies
+        run: uv sync --frozen
       - name: check licenses
         # --partial-match: many modern packages report SPDX expressions such as
         # "Apache-2.0 OR BSD-3-Clause" or "BSD-3-Clause AND 0BSD AND MIT ...".
         # Exact matching rejects those even when every component is permissive,
         # so match an allowed license as a substring of the reported string.
         run: >
-          docker compose exec -T django pip-licenses
+          uv run pip-licenses
           --with-system
           --partial-match
           --allow-only="

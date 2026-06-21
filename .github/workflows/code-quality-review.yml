@@ -12,13 +12,12 @@ jobs:
         uses: astral-sh/setup-uv@v5
       - name: export requirements
         run: |
-          cd Django;
           uv export --no-hashes --format requirements-txt -o requirements.txt;
       - uses: tsuyoshicho/action-mypy@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: "github-pr-review"
-          target: "Django"
+          target: "."
   actionlint:
     runs-on: ubuntu-latest
     steps:
