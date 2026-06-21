@@ -11,6 +11,7 @@ class AnimeRoomFactory(factory.django.DjangoModelFactory):
     num_people = factory.fuzzy.FuzzyInteger(5, 10)
     sum_people = factory.fuzzy.FuzzyInteger(10, 20)
     part_id = "123456"
+    title = factory.Faker("sentence", nb_words=3)
     updated_at = factory.Faker("date")
     created_at = factory.Faker("date")
 

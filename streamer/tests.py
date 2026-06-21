@@ -29,11 +29,13 @@ class TestAnimePartyConsumer(TransactionTestCase):
         connected, subprotocol = await communicator.connect()
         assert connected
         user_name1 = "user_name1"
+        title1 = "鬼滅の刃 - 第1話 - 残酷"
         await communicator.send_json_to(
             {
                 "action": "create",
                 "user_name": user_name1,
                 "part_id": "123456",
+                "title": title1,
                 "request_id": 100,
             }
         )
@@ -44,6 +46,9 @@ class TestAnimePartyConsumer(TransactionTestCase):
         assert self.anime_user_exist(response["user"]["user_id"])
         # roomがデータベースに作られていることを確認
         assert self.anime_room_exist(response["room_id"])
+        # ルーム作成時に送られたタイトルが保存されていることを確認
+        room = await self.get_anime_room(response["room_id"])
+        assert room.title == title1
         await communicator.disconnect()
 
     @pytest.mark.django_db(transaction=True)

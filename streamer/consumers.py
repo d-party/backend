@@ -100,9 +100,9 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.leave_party()
 
     @action()
-    async def create(self, part_id, user_name, **kwargs):
+    async def create(self, part_id, user_name, title="", **kwargs):
         # create room
-        self.anime_room = await self.database_create_room(part_id=part_id)
+        self.anime_room = await self.database_create_room(part_id=part_id, title=title)
         # create user
         self.anime_user = await self.database_create_user(
             user_name=user_name,
@@ -423,17 +423,18 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         self.anime_user.save()
 
     @database_sync_to_async
-    def database_create_room(self, part_id: str):
+    def database_create_room(self, part_id: str, title: str = ""):
         """データベース上にルームを作成する
         クライアント側でルーム作成が押された場合に呼び出される
 
         Args:
             part_id ([str]): 現在視聴している動画のID(dアニメストアが発行)
+            title ([str]): 視聴中アニメのタイトル(拡張機能がページ DOM から取得)
 
         Returns:
             AnimeRoom: 作成したルームのオブジェクト
         """
-        return AnimeRoom.objects.create(part_id=part_id)
+        return AnimeRoom.objects.create(part_id=part_id, title=title)
 
     @database_sync_to_async
     def database_update_room_part_id(self, part_id: str):
