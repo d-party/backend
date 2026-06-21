@@ -55,7 +55,6 @@ INSTALLED_APPS = [
     "axes",
     "django_prometheus",
     "streamer",
-    "web",
     "api",
 ]
 if DEBUG:
@@ -161,7 +160,7 @@ JAZZMIN_SETTINGS = {
     "site_title": "d-party",
     "site_header": "d-party",
     "site_brand": "d-party",
-    "site_logo": "web/logo/dp-mini.png",
+    "site_logo": "branding/dp-mini.png",
     "site_logo_classes": "img-circle",
     "site_icon": None,
     "welcome_sign": "Welcome to d-party",
@@ -185,7 +184,7 @@ JAZZMIN_SETTINGS = {
         },
         {
             "name": "Chart",
-            "url": "/admin/chart",
+            "url": "/stats",
             "new_window": True,
         },
         {
@@ -272,6 +271,10 @@ JAZZMIN_UI_TWEAKS = {
 
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "static/")
+# 公開ページ（LP・使い方・統計など）は frontend サブモジュールへ移行済みのため、
+# Django 側のアプリ static は持たない。管理画面（Jazzmin）のロゴ等のブランディング
+# 素材だけをここから配信する。
+STATICFILES_DIRS = [os.path.join(BASE_DIR, "assets")]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
