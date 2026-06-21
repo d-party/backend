@@ -28,7 +28,7 @@ jobs:
           uvx ruff format .
           uvx ruff check --fix .
           git config --global user.name github-actions || exit 0;
-          git config --global user.email '${GITHUB_ACTOR}@users.noreply.github.com' || exit 0;
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY || exit 0;
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com" || exit 0;
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY" || exit 0;
           git commit -am "style: apply ruff format/fixes" || exit 0;
-          git push --force origin HEAD:$GITHUB_REF || exit 0;
+          git push --force origin "HEAD:$GITHUB_REF" || exit 0;

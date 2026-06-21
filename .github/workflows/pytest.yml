@@ -10,8 +10,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: run docker compose
+        # Only the django service (and its postgres/redis deps) is needed for
+        # tests. Starting the whole stack would try to build the `frontend`
+        # service, whose `context: ../frontend` does not exist in this
+        # backend-only checkout (it is a sibling submodule of the monorepo).
         run: |
-          docker compose up -d
+          docker compose up -d django
       - name: init containers
         run: |
           docker compose exec -T django python manage.py makemigrations;

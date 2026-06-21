@@ -10,19 +10,19 @@ jobs:
   bandit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
       - name: install bandit
         run: pip install bandit
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: run bandit
         run: |
           bandit Django -r -o ./bandit.txt -f txt -c ./.github/bandit.yml
       - name: Archive bandit log
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: bandit-report
           path: ./bandit.txt
@@ -33,19 +33,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install moreutils -y
-      - uses: actions/setup-python@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
       - name: install python-taint
         run: pip install python-taint
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: run pyt
         run: |
           pyt -a D -o pyt.txt ./Django
       - name: Archive pyt log
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: pyt-report
           path: ./pyt.txt
@@ -63,7 +63,7 @@ jobs:
         language: ["python"]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -78,8 +78,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: run docker compose
+        # Build only the django image; building the full stack would try to
+        # build the `frontend` service (`context: ../frontend`), absent in this
+        # backend-only checkout.
         run: |
-          docker compose build
+          docker compose build django
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:

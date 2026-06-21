@@ -1,16 +1,21 @@
 # syntax=docker/dockerfile:1
+
+# Bring in the uv binary from the official image as a named stage so the COPY
+# below references a previously defined FROM alias (hadolint DL3022).
+FROM ghcr.io/astral-sh/uv:0.9 AS uv
+
 FROM python:3.13-slim-bookworm
 
-# Bring in the uv binary from the official image.
-COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /bin/
+COPY --from=uv /uv /uvx /bin/
 
+# Keep UV_PROJECT_ENVIRONMENT (the virtualenv) outside the app dir so a
+# bind-mount over the source (docker-compose) does not shadow the installed
+# dependencies.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBCONF_NOWARNINGS=yes \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    # Keep the virtualenv outside the app dir so a bind-mount over the source
-    # (docker-compose) does not shadow the installed dependencies.
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     PATH="/opt/venv/bin:$PATH"
 

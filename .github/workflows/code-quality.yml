@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Lizard Runner
         uses: Uno-Takashi/Lizard-Runner@v3
         with:
@@ -19,13 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: Setup node/npm
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
-          node-version: "15"
+          node-version: "20"
       - name: install dockerlint
         run: |
           npm install -g dockerlint
@@ -34,7 +34,7 @@ jobs:
   hadolint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: hadolint/hadolint-action@v2.0.0
         with:
           dockerfile: ./Django/Dockerfile
@@ -42,7 +42,7 @@ jobs:
   dockle:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: |
           docker compose build django
       - name: Run Dockle
@@ -54,25 +54,25 @@ jobs:
   actionlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: reviewdog/action-actionlint@v1
   shellcheck:
     name: Shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@master
   yamllint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: yaml-lint
         uses: ibiqlik/action-yamllint@v3
   # nginx-conf-check:
   #   runs-on: ubuntu-latest
   #   steps:
-  #     - uses: actions/checkout@v3
+  #     - uses: actions/checkout@v4
   #     - name: run docker-compose
   #       run: |
   #         docker-compose up -d
