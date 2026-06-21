@@ -11,6 +11,9 @@ class AnimeRoom(LogicalDeletionMixin):
     num_people = models.PositiveSmallIntegerField(default=1)
     sum_people = models.PositiveSmallIntegerField(default=1)
     part_id = models.CharField(max_length=16)
+    # 視聴中アニメのタイトル。ルーム作成時に拡張機能がページ DOM から取得して
+    # 一度だけ送信する（以降は更新しない）。OGP 等の表示に使う。
+    title = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

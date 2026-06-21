@@ -27,7 +27,14 @@ class LogicalDeletionModelAdmin(admin.ModelAdmin):
 
 @admin.register(AnimeRoom)
 class AnimeRoomAdmin(LogicalDeletionModelAdmin):
-    list_display = ("room_id", "part_id", "num_people", "created_at", "deleted_at")
+    list_display = (
+        "room_id",
+        "title",
+        "part_id",
+        "num_people",
+        "created_at",
+        "deleted_at",
+    )
 
 
 @admin.register(AnimeUser)

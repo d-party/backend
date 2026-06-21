@@ -270,6 +270,7 @@ class AnimeStoreLobbyResolveAPI(APIView):
                 "redirect_url": base_url + url_param,
                 "part_id": anime_room.part_id,
                 "room_id": str(room_id),
+                "title": anime_room.title,
             },
             status=status.HTTP_200_OK,
         )
