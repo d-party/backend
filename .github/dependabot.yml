@@ -6,11 +6,11 @@ updates:
       interval: "weekly"
       timezone: "Asia/Tokyo"
       time: "12:00"
-    target-branch: develop
+    target-branch: main
   - package-ecosystem: "docker"
     directory: "/Django"
     schedule:
       interval: "weekly"
       timezone: "Asia/Tokyo"
       time: "12:00"
-    target-branch: develop
+    target-branch: main
