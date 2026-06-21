@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 
@@ -25,6 +26,54 @@ from .format import (
 )
 from .models import AnimeReaction, AnimeRoom, AnimeUser, ReactionType
 from .util import is_valid_uuid, uuid_json_encoder
+
+# ホストの WS が一瞬落ちた / タブをリロードしただけでルームが即消え
+# すると、ゲストが共有リンクを踏んだときにもう failed_join になる。
+# 最後のユーザが離脱しても N 秒はルームを生かしておき、その間に誰かが
+# 再参加したら削除をキャンセルして生かす。ディスクに状態を持たずプロセス
+# 内の dict + asyncio.Task で追跡（runserver / 単一 daphne ワーカー前提）。
+ROOM_GRACE_SECONDS = 60.0
+_pending_room_deletes: dict[str, asyncio.Task] = {}
+
+
+@database_sync_to_async
+def _count_alive_users_in_room(room_id_str: str) -> int:
+    return AnimeUser.objects.alive().filter(room_id=room_id_str).count()
+
+
+@database_sync_to_async
+def _logical_delete_room_if_empty(room_id_str: str) -> bool:
+    """Delete room only if it is still empty. Returns True if deleted."""
+    qs = AnimeRoom.objects.alive().filter(room_id=room_id_str)
+    if not qs.exists():
+        return False
+    if AnimeUser.objects.alive().filter(room_id=room_id_str).exists():
+        return False
+    qs.delete()  # logical
+    return True
+
+
+def _cancel_pending_room_delete(room_id_str: str) -> None:
+    """Cancel a scheduled grace-period delete if any (e.g., on rejoin)."""
+    task = _pending_room_deletes.pop(room_id_str, None)
+    if task and not task.done():
+        task.cancel()
+
+
+def _schedule_room_delete(room_id_str: str, delay: float = ROOM_GRACE_SECONDS) -> None:
+    """Schedule a logical-delete after `delay` seconds, replacing any prior task."""
+    _cancel_pending_room_delete(room_id_str)
+
+    async def _delete_after() -> None:
+        try:
+            await asyncio.sleep(delay)
+            await _logical_delete_room_if_empty(room_id_str)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            _pending_room_deletes.pop(room_id_str, None)
+
+    _pending_room_deletes[room_id_str] = asyncio.create_task(_delete_after())
 
 
 class AnimePartyConsumer(GenericAsyncAPIConsumer):
@@ -86,14 +135,19 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             room_id (uuid): AnimeRoomオブジェクトに存在するroom_id
             user_name (str): ユーザーが指定する事ができるユーザー名
         """
-        # 接続要求されたルームのオブジェクトがあれば取得
+        # 接続要求されたルームのオブジェクトがあれば取得（deleted_at が入っているものは弾く）
         self.anime_room = await self.database_get_or_none_room(room_id=room_id)
         if self.anime_room is None:
-            # ルームが存在していない場合はfaildを送信してルームから離脱
-            data_json = {"action": "server_message", "message": "failed_join"}
-            await self.send(text_data=json.dumps(data_json))
-            await self.leave_party()
+            # ルームが存在しない/既に終了している場合は failed_join を通知してクローズ。
+            # 旧実装は send 後に leave_party() を呼んでいたが anime_user 未生成のため
+            # 早期 return するだけで WS が開いたままになり、後続の sync_request 等が
+            # self.anime_user.__dict__ で AttributeError を起こして 1011 close を招く。
+            failed = ServerMessage(message_type="failed_join")
+            await self.send(text_data=json.dumps(failed.model_dump()))
+            await self.close()
             return
+        # このルームに猟予期間の削除予約があれば取り消す
+        _cancel_pending_room_delete(str(self.anime_room.room_id))
         # ルームが存在しているのであればAnimeUserオブジェクトを作成
         self.anime_user = await self.database_create_user(
             user_name=user_name, room_id=self.anime_room
@@ -143,6 +197,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             operation (str): 操作名(seek,stop,,,etc)
             option (dict): 動画プレイヤー情報
         """
+        if self.anime_room is None or self.anime_user is None:
+            return
         await self.database_renew_state()
         video_operation = VideoOperation(
             room_id=self.anime_room.room_id,
@@ -169,6 +225,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """sync_requestを受け取った場合のアクション
         sync_requestはホストの状態に動画プレイヤーを同期を要求するアクション
         """
+        if self.anime_room is None or self.anime_user is None:
+            return
         await self.database_renew_state()
         sync_request = SyncRequest(user=User(**self.anime_user.__dict__).model_dump())
         response_data = HostSend(
@@ -189,6 +247,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             to_user (uuid): 送信先のAnimeUserオブジェクトのID
             option (dict): 動画プレイヤー情報
         """
+        if self.anime_room is None or self.anime_user is None:
+            return
         await self.database_renew_state()
         sync_response = SyncResponse(option=option)
         response_data = UserSend(
@@ -208,6 +268,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         Args:
             operation (str): 操作の種類
         """
+        if self.anime_room is None or self.anime_user is None:
+            return
         await self.database_renew_state()
         operation_notification = OperationNotification(
             room_id=self.anime_room.room_id,
@@ -229,6 +291,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         Args:
             reaction_type (str): リアクションの種類
         """
+        if self.anime_room is None or self.anime_user is None:
+            return
         reaction = Reaction(reaction_type=reaction_type)
         response_data = GroupSend(
             response=reaction, sender_channel_name=self.channel_name
@@ -242,6 +306,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
     @action()
     async def user_list(self, **kwargs):
         """user_listを受け取った場合のアクション"""
+        if self.anime_room is None or self.anime_user is None:
+            return
         user_list = await self.database_user_list()
         response_data = UserList(user_list=user_list)
         await self.send(text_data=json.dumps(response_data.model_dump()))
@@ -300,7 +366,10 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.database_decrease_num_people()
         user_count = await self.database_get_user_count()
         if user_count < 1:
-            await self.database_delete_room()
+            # 即消しだるとホストの一瞬切断・タブリロードでルームが消え、
+            # ゲストが全員 failed_join になる。猟予期間中に誰かが再参加したら join 側で
+            # cancel される。
+            _schedule_room_delete(str(self.anime_room.room_id))
         if user_count >= 1 and self.anime_user.is_host:
             next_host = await self.database_get_next_host_or_none()
             await self.database_host_change_user(next_host.user_id)
@@ -421,13 +490,11 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         Returns:
             [AnimeRoom.objects,None]: ルームのオブジェクトか見つからない場合はNone
         """
-        if (
-            is_valid_uuid(uuid_to_test=room_id)
-            and AnimeRoom.objects.filter(room_id=room_id).exists()
-        ):
-            return AnimeRoom.objects.filter(room_id=room_id).first()
-        else:
+        if not is_valid_uuid(uuid_to_test=room_id):
             return None
+        # 論理削除済みのルームには参加させない（旧実装は .filter() だけで deleted_at を
+        # 無視していたため、削除直後のルームに join できてしまうバグがあった）。
+        return AnimeRoom.objects.alive().filter(room_id=room_id).first()
 
     @database_sync_to_async
     def database_host_change_user(self, user_id):
