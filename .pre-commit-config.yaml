@@ -1,0 +1,33 @@
+# pre-commit hooks for the d-party Backend (Django).
+# Install: `pre-commit install` (run from this directory).
+# Run on everything: `pre-commit run --all-files`
+#
+# ruff の詳細ルール（flake8 / flake8-django / flake8-bandit 等）は pyproject.toml の
+# [tool.ruff] を参照する。
+minimum_pre_commit_version: "3.5.0"
+
+# ベンダー製 / 配信用静的アセット（jQuery・Bootstrap・Flickity 等の minified ライブラリ）は
+# 整形対象から除外する。アプリのソースコードのみフックを適用する。
+exclude: '^web/static/'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.18
+    hooks:
+      # Lint（flake8 / flake8-django / flake8-bandit 等を ruff で再現。設定は pyproject.toml）
+      - id: ruff-check
+        args: [--fix]
+      # Format（black 互換）
+      - id: ruff-format
