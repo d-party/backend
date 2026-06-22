@@ -8,7 +8,11 @@
 # Both the classifier-style names ("MIT License") and SPDX ids ("MIT") are listed
 # because packages report licenses in either form.
 #
-# Policy: never add AGPL / SSPL here.
+# Policy: permissive + LGPL (weak copyleft) only.
+# Never add GPL / AGPL / SSPL here — strong copyleft would force disclosure of
+# our application source. Replace such a dependency with a permissive/LGPL
+# alternative instead. LGPL is allowed because, used as a library, it does not
+# impose source-disclosure obligations on the application.
 
 # Apache
 Apache Software License
@@ -26,8 +30,7 @@ Zlib
 CC0-1.0
 Freeware
 
-# (L)GPL
-GNU General Public License (GPL)
+# LGPL (weak copyleft only — GPL/AGPL deliberately excluded)
 GNU Lesser General Public License v3 or later (LGPLv3+)
 LGPL-3.0-only
 LGPL-3.0-or-later
