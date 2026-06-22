@@ -1,0 +1,60 @@
+# License whitelist for backend (Python) dependencies.
+# One license name per line. Blank lines and lines starting with # are ignored.
+# Consumed by the License Check CI workflow (uv run pip-licenses --allow-only=...).
+#
+# pip-licenses runs with --partial-match, so each entry is matched as a substring
+# of the reported license string. This covers SPDX expressions such as
+# "Apache-2.0 OR BSD-3-Clause" where every component is permissive.
+# Both the classifier-style names ("MIT License") and SPDX ids ("MIT") are listed
+# because packages report licenses in either form.
+#
+# Policy: never add AGPL / SSPL here.
+
+# Apache
+Apache Software License
+Apache-2.0
+
+# BSD
+BSD License
+BSD
+BSD-3-Clause
+BSD-2-Clause
+0BSD
+
+# Misc permissive
+Zlib
+CC0-1.0
+Freeware
+
+# (L)GPL
+GNU General Public License (GPL)
+GNU Lesser General Public License v3 or later (LGPLv3+)
+LGPL-3.0-only
+LGPL-3.0-or-later
+
+# MIT
+MIT License
+MIT
+
+# MPL
+Mozilla Public License 2.0 (MPL 2.0)
+MPL-2.0
+
+# Python / PSF
+Python Software Foundation License
+PSF-2.0
+Python-2.0
+
+# Public domain / unlicense
+Public Domain
+UNKNOWN
+The Unlicense (Unlicense)
+Unlicense
+
+# Zope
+Zope Public License
+ZPL
+
+# ISC
+ISC License (ISCL)
+ISC

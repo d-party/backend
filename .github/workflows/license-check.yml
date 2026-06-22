@@ -14,36 +14,13 @@ jobs:
       - name: install dependencies
         run: uv sync --frozen
       - name: check licenses
-        # --partial-match: many modern packages report SPDX expressions such as
-        # "Apache-2.0 OR BSD-3-Clause" or "BSD-3-Clause AND 0BSD AND MIT ...".
-        # Exact matching rejects those even when every component is permissive,
-        # so match an allowed license as a substring of the reported string.
+        # Allow-list lives in license-whitelist-python.txt (one license per line,
+        # # comments / blank lines ignored). --partial-match: many modern packages
+        # report SPDX expressions such as "Apache-2.0 OR BSD-3-Clause" or
+        # "BSD-3-Clause AND 0BSD AND MIT ...". Exact matching rejects those even when
+        # every component is permissive, so match an allowed license as a substring.
         run: >
           uv run pip-licenses
           --with-system
           --partial-match
-          --allow-only="
-            Apache Software License;
-            Apache-2.0;
-            BSD License;BSD;
-            BSD-3-Clause;BSD-2-Clause;0BSD;
-            Zlib;CC0-1.0;
-            Freeware;
-            GNU General Public License (GPL);
-            GNU Lesser General Public License v3 or later (LGPLv3+);
-            LGPL-3.0-only;LGPL-3.0-or-later;
-            MIT License;
-            MIT;
-            Mozilla Public License 2.0 (MPL 2.0);
-            MPL-2.0;
-            Python Software Foundation License;
-            PSF-2.0;Python-2.0;
-            Public Domain;
-            UNKNOWN;
-            The Unlicense (Unlicense);
-            Unlicense;
-            Zope Public License;
-            ZPL;
-            ISC License (ISCL);
-            ISC;
-            "
+          --allow-only="$(grep -v '^[[:space:]]*#' license-whitelist-python.txt | grep -v '^[[:space:]]*$' | paste -sd ';')"
