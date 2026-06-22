@@ -85,6 +85,10 @@ jobs:
         with:
           image-ref: "backend-django:latest"
           format: "table"
+          # Vulnerability scanning only. Secret scanning is disabled because it
+          # flags example private keys embedded in third-party library docstrings
+          # (e.g. autobahn's cryptosign module) as false positives.
+          scanners: "vuln"
           severity: "HIGH,CRITICAL"
           exit-code: "1"
           ignore-unfixed: true
