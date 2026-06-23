@@ -22,10 +22,12 @@ class User(BaseModel):
     Attributes:
         user_id: UUID identifying the user.
         user_name: display name chosen by the user.
+        is_host: whether this participant is the room host (owner).
     """
 
     user_id: UUID
     user_name: str
+    is_host: bool = False
 
 
 class ResponseBaseFormat(BaseModel):

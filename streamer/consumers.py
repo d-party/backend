@@ -312,6 +312,32 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         response_data = UserList(user_list=user_list)
         await self.send(text_data=json.dumps(response_data.model_dump()))
 
+    @action()
+    async def delete_room(self, **kwargs):
+        """ホスト（オーナー）がルームを削除するアクション。
+
+        ルーム内の全員（送信者を含む）へ ``room_deleted`` を通知してから、
+        ルームと参加者をまとめて論理削除する。ホスト以外からの要求は無視する。
+        """
+        if self.anime_room is None or self.anime_user is None:
+            return
+        await self.database_renew_state()
+        if not self.anime_user.is_host:
+            return
+        room_id_str = str(self.anime_room.room_id)
+        # 猟予期間の自動削除が予約されていれば取り消す（ここで明示的に削除するため）。
+        _cancel_pending_room_delete(room_id_str)
+        server_message = ServerMessage(message_type="room_deleted")
+        response_data = RoomSend(
+            response=server_message,
+            sender_channel_name=self.channel_name,
+        )
+        await self.channel_layer.group_send(
+            room_id_str,
+            json.loads(json.dumps(response_data.model_dump())),
+        )
+        await self.database_delete_room_and_users()
+
     async def room_send(self, data: dict):
         """自分を含むのグループに所属するユーザーへの一斉送信
 
@@ -455,6 +481,17 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         self.anime_room.save()
 
     @database_sync_to_async
+    def database_delete_room_and_users(self):
+        """ルームと、その中の生存ユーザーをまとめて論理削除する。
+
+        ホストがルームを削除したときに呼ぶ。QuerySet の ``delete()`` は
+        ``LogicalDeletionMixin`` により論理削除（``deleted_at`` 付与）。
+        """
+        room_id = self.anime_room.room_id
+        AnimeUser.objects.alive().filter(room_id=room_id).delete()
+        AnimeRoom.objects.alive().filter(room_id=room_id).delete()
+
+    @database_sync_to_async
     def database_increase_num_people(self):
         """人が増えた場合にデータベースのnum_peopleとsum_peopleを加算する"""
         self.anime_room.num_people = int(self.anime_room.num_people) + 1
@@ -516,7 +553,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
     def database_user_list(self):
         """ルーム内のユーザーを取得する"""
         ar = AnimeRoom.objects.get(room_id=self.anime_room.room_id)
-        user_list = ar.inroom.alive().values("user_name", "user_id")
+        user_list = ar.inroom.alive().values("user_name", "user_id", "is_host")
         return list(user_list)
 
     @database_sync_to_async
