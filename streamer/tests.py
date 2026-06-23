@@ -143,6 +143,10 @@ class TestAnimePartyConsumer(TransactionTestCase):
         response = await communicator1.receive_json_from()
         assert response["action"] == "user_list"
         assert len(response["user_list"]) == 2
+        # user_list はホスト（オーナー）判定のため is_host を含む。
+        hosts = {u["user_name"]: u["is_host"] for u in response["user_list"]}
+        assert hosts[user_name1] is True
+        assert hosts[user_name2] is False
         await communicator2.send_json_to(
             {
                 "action": "video_operation",
@@ -162,6 +166,119 @@ class TestAnimePartyConsumer(TransactionTestCase):
         assert response["user"]["user_name"] == user_name2
         assert response["room_id"] == join_room_id
         await communicator1.disconnect()
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_anime_party_consumer_delete_room_ok(self):
+        """ホストが delete_room を送ると、ルームが論理削除され、ルーム内の
+        全員（ホスト自身を含む）へ room_deleted が通知されるテスト"""
+        host = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await host.connect()
+        await host.send_json_to(
+            {
+                "action": "create",
+                "user_name": "host_user",
+                "part_id": "123456",
+                "request_id": 100,
+            }
+        )
+        create_response = await host.receive_json_from()
+        room_id = create_response["room_id"]
+        # create 直後の user_list を読み飛ばす。
+        await host.receive_json_from()
+
+        guest = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await guest.connect()
+        await guest.send_json_to(
+            {
+                "action": "join",
+                "user_name": "guest_user",
+                "room_id": room_id,
+                "request_id": 100,
+            }
+        )
+        # guest: join 応答 + user_list、host: user_add + user_list を読み飛ばす。
+        await guest.receive_json_from()
+        await guest.receive_json_from()
+        await host.receive_json_from()
+        await host.receive_json_from()
+
+        # ホストがルーム削除を要求する。
+        await host.send_json_to({"action": "delete_room", "request_id": 100})
+
+        host_msg = await host.receive_json_from()
+        assert host_msg["action"] == "server_message"
+        assert host_msg["message_type"] == "room_deleted"
+
+        guest_msg = await guest.receive_json_from()
+        assert guest_msg["action"] == "server_message"
+        assert guest_msg["message_type"] == "room_deleted"
+
+        assert await self.room_alive(room_id) is False
+        assert await self.alive_user_count(room_id) == 0
+
+        # 既存テストにならい片方のみ切断する（num_people は作成者を数えないため、
+        # 2 回 decrement すると CHECK 制約 >= 0 を割る既知の会計上の癖を避ける）。
+        await host.disconnect()
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_anime_party_consumer_delete_room_non_host_ignored(self):
+        """ホスト以外が delete_room を送っても無視され、ルームは残るテスト"""
+        host = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await host.connect()
+        await host.send_json_to(
+            {
+                "action": "create",
+                "user_name": "host_user",
+                "part_id": "123456",
+                "request_id": 100,
+            }
+        )
+        create_response = await host.receive_json_from()
+        room_id = create_response["room_id"]
+        await host.receive_json_from()
+
+        guest = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await guest.connect()
+        await guest.send_json_to(
+            {
+                "action": "join",
+                "user_name": "guest_user",
+                "room_id": room_id,
+                "request_id": 100,
+            }
+        )
+        await guest.receive_json_from()
+        await guest.receive_json_from()
+        await host.receive_json_from()
+        await host.receive_json_from()
+
+        # 非ホスト（ゲスト）が削除を要求しても無視される。
+        await guest.send_json_to({"action": "delete_room", "request_id": 100})
+
+        assert await guest.receive_nothing() is True
+        assert await self.room_alive(room_id) is True
+        assert await self.alive_user_count(room_id) == 2
+
+        # 片方のみ切断する（num_people の二重 decrement による CHECK 制約違反を避ける）。
+        await host.disconnect()
+
+    @database_sync_to_async
+    def room_alive(self, room_id):
+        return AnimeRoom.objects.alive().filter(room_id=room_id).exists()
+
+    @database_sync_to_async
+    def alive_user_count(self, room_id):
+        return AnimeUser.objects.alive().filter(room_id=room_id).count()
 
     @database_sync_to_async
     def anime_user_exist(self, user_id):
