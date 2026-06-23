@@ -1,6 +1,6 @@
 [project]
 name = "d-party-backend"
-version = "2.5.0"
+version = "2.5.1"
 description = "d-party backend — Django Channels powered watch-together service for dアニメストア"
 authors = [{ name = "U-Not", email = "euno.eng@gmail.com" }]
 requires-python = ">=3.13"
