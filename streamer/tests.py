@@ -29,11 +29,13 @@ class TestAnimePartyConsumer(TransactionTestCase):
         connected, subprotocol = await communicator.connect()
         assert connected
         user_name1 = "user_name1"
+        user_icon1 = "FaCat"
         title1 = "鬼滅の刃 - 第1話 - 残酷"
         await communicator.send_json_to(
             {
                 "action": "create",
                 "user_name": user_name1,
+                "user_icon": user_icon1,
                 "part_id": "123456",
                 "title": title1,
                 "request_id": 100,
@@ -42,6 +44,8 @@ class TestAnimePartyConsumer(TransactionTestCase):
         response = await communicator.receive_json_from()
         assert response["action"] == "create"
         assert response["user"]["user_name"] == user_name1
+        # 送信した user_icon が往復することを確認
+        assert response["user"]["user_icon"] == user_icon1
         # userがデータベースに作られていることを確認
         assert self.anime_user_exist(response["user"]["user_id"])
         # roomがデータベースに作られていることを確認
@@ -75,6 +79,8 @@ class TestAnimePartyConsumer(TransactionTestCase):
         assert response["action"] == "join"
         # userがデータベースに作られていることを確認
         assert self.anime_user_exist(response["user"]["user_id"])
+        # user_icon を送らない旧拡張は既定アイコンにフォールバックする（後方互換）
+        assert response["user"]["user_icon"] == "FaRegUser"
         await communicator.disconnect()
 
     @pytest.mark.django_db(transaction=True)
@@ -147,6 +153,10 @@ class TestAnimePartyConsumer(TransactionTestCase):
         hosts = {u["user_name"]: u["is_host"] for u in response["user_list"]}
         assert hosts[user_name1] is True
         assert hosts[user_name2] is False
+        # user_list は表示アイコンのため user_icon も含む（未指定なら既定キー）。
+        icons = {u["user_name"]: u["user_icon"] for u in response["user_list"]}
+        assert icons[user_name1] == "FaRegUser"
+        assert icons[user_name2] == "FaRegUser"
         await communicator2.send_json_to(
             {
                 "action": "video_operation",

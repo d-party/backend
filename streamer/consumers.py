@@ -100,7 +100,9 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.leave_party()
 
     @action()
-    async def create(self, part_id, user_name, title="", **kwargs):
+    async def create(
+        self, part_id, user_name, title="", user_icon="FaRegUser", **kwargs
+    ):
         # create room
         self.anime_room = await self.database_create_room(part_id=part_id, title=title)
         # create user
@@ -108,6 +110,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             user_name=user_name,
             room_id=self.anime_room,
             is_host=True,
+            user_icon=user_icon,
         )
         await self.channel_layer.group_add(
             str(self.anime_room.room_id), self.channel_name
@@ -127,13 +130,16 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
 
     @action()
-    async def join(self, room_id: uuid, user_name: str, **kwargs):
+    async def join(
+        self, room_id: uuid, user_name: str, user_icon="FaRegUser", **kwargs
+    ):
         """joinを受け取った場合のアクション
         joinを受け取った場合、ルームが存在していればルームに参加する
 
         Args:
             room_id (uuid): AnimeRoomオブジェクトに存在するroom_id
             user_name (str): ユーザーが指定する事ができるユーザー名
+            user_icon (str): ユーザーが指定する react-icons (FA6) のキー。旧拡張は送らないため既定値あり。
         """
         # 接続要求されたルームのオブジェクトがあれば取得（deleted_at が入っているものは弾く）
         self.anime_room = await self.database_get_or_none_room(room_id=room_id)
@@ -150,7 +156,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         _cancel_pending_room_delete(str(self.anime_room.room_id))
         # ルームが存在しているのであればAnimeUserオブジェクトを作成
         self.anime_user = await self.database_create_user(
-            user_name=user_name, room_id=self.anime_room
+            user_name=user_name, room_id=self.anime_room, user_icon=user_icon
         )
         await self.channel_layer.group_add(
             str(self.anime_room.room_id), self.channel_name
@@ -427,19 +433,26 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
 
     # control database
     @database_sync_to_async
-    def database_create_user(self, user_name: str, room_id, is_host: bool = False):
+    def database_create_user(
+        self,
+        user_name: str,
+        room_id,
+        is_host: bool = False,
+        user_icon: str = "FaRegUser",
+    ):
         """データベース上にユーザーを作成する
 
         Args:
             user_name ([type]): ユーザーが任意に指定可能な名前
             room_id ([type]): AnimeRoomに存在するID
             is_host (bool, optional): ホストユーザーの場合はTrueにする
+            user_icon (str, optional): react-icons (FA6) のキー。未指定なら既定アイコン。
 
         Returns:
             AnimeUser : 作成したユーザーのオブジェクト
         """
         return AnimeUser.objects.create(
-            user_name=user_name, room_id=room_id, is_host=is_host
+            user_name=user_name, room_id=room_id, is_host=is_host, user_icon=user_icon
         )
 
     @database_sync_to_async
@@ -553,7 +566,9 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
     def database_user_list(self):
         """ルーム内のユーザーを取得する"""
         ar = AnimeRoom.objects.get(room_id=self.anime_room.room_id)
-        user_list = ar.inroom.alive().values("user_name", "user_id", "is_host")
+        user_list = ar.inroom.alive().values(
+            "user_name", "user_id", "is_host", "user_icon"
+        )
         return list(user_list)
 
     @database_sync_to_async

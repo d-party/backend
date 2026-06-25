@@ -22,11 +22,15 @@ class User(BaseModel):
     Attributes:
         user_id: UUID identifying the user.
         user_name: display name chosen by the user.
+        user_icon: react-icons (Font Awesome 6) key string chosen by the user.
+            Defaults to ``FaRegUser`` so older clients/data that omit it fall back
+            to the plain user icon.
         is_host: whether this participant is the room host (owner).
     """
 
     user_id: UUID
     user_name: str
+    user_icon: str = "FaRegUser"
     is_host: bool = False
 
 
