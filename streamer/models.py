@@ -21,6 +21,10 @@ class AnimeRoom(LogicalDeletionMixin):
 class AnimeUser(LogicalDeletionMixin):
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user_name = EncryptedCharField(default="user", max_length=20)
+    # 表示アイコン。フロント（拡張）が react-icons (Font Awesome 6) のキー文字列を送る。
+    # アイコン名は PII ではないため平文。旧拡張が送らない場合は既定キーで、現行のシンプルな
+    # ユーザーアイコン相当（FaRegUser）にフォールバックさせる。
+    user_icon = models.CharField(default="FaRegUser", max_length=64)
     room_id = models.ForeignKey(
         AnimeRoom, on_delete=models.CASCADE, related_name="inroom"
     )

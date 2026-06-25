@@ -21,6 +21,7 @@ class AnimeUserFactory(factory.django.DjangoModelFactory):
         model = AnimeUser
 
     user_name = factory.Faker("name")
+    user_icon = "FaRegUser"
     room_id = factory.SubFactory(AnimeRoomFactory)
     is_host = False
     updated_at = factory.Faker("date")
