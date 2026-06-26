@@ -4,7 +4,7 @@
 # below references a previously defined FROM alias (hadolint DL3022).
 FROM ghcr.io/astral-sh/uv:0.9 AS uv
 
-FROM python:3.13-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 COPY --from=uv /uv /uvx /bin/
 
