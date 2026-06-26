@@ -6,6 +6,7 @@ from channels.db import database_sync_to_async
 from djangochannelsrestframework.decorators import action
 from djangochannelsrestframework.generics import GenericAsyncAPIConsumer
 
+from .cron import fold_room_reactions
 from .format import (
     Create,
     GroupSend,
@@ -49,6 +50,8 @@ def _logical_delete_room_if_empty(room_id_str: str) -> bool:
         return False
     if AnimeUser.objects.alive().filter(room_id=room_id_str).exists():
         return False
+    # ルームが終了するので、リアクションを集計テーブルへ畳んで生データを削除する。
+    fold_room_reactions(room_id_str)
     qs.delete()  # logical
     return True
 
@@ -95,7 +98,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         self.close()でも呼び出される
 
         Args:
-            close_code ([type]): [description]
+            close_code (int): WebSocket のクローズコード
         """
         await self.leave_party()
 
@@ -152,7 +155,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             await self.send(text_data=json.dumps(failed.model_dump()))
             await self.close()
             return
-        # このルームに猟予期間の削除予約があれば取り消す
+        # このルームに猶予期間の削除予約があれば取り消す
         _cancel_pending_room_delete(str(self.anime_room.room_id))
         # ルームが存在しているのであればAnimeUserオブジェクトを作成
         self.anime_user = await self.database_create_user(
@@ -331,7 +334,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         if not self.anime_user.is_host:
             return
         room_id_str = str(self.anime_room.room_id)
-        # 猟予期間の自動削除が予約されていれば取り消す（ここで明示的に削除するため）。
+        # 猶予期間の自動削除が予約されていれば取り消す（ここで明示的に削除するため）。
         _cancel_pending_room_delete(room_id_str)
         server_message = ServerMessage(message_type="room_deleted")
         response_data = RoomSend(
@@ -345,10 +348,11 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.database_delete_room_and_users()
 
     async def room_send(self, data: dict):
-        """自分を含むのグループに所属するユーザーへの一斉送信
+        """自分を含むグループに所属するユーザーへの一斉送信
 
         Args:
-            data (dict): [description]
+            data (dict): group_send 経由で渡る dict。``response`` にクライアントへ
+                送る本文を持つ。
         """
         await self.send(text_data=json.dumps(data["response"]))
 
@@ -356,7 +360,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """自分以外のグループに所属するユーザーへの一斉送信
 
         Args:
-            data (dict): [description]
+            data (dict): group_send 経由で渡る dict。``response`` の本文と、
+                送信元を示す ``sender_channel_name`` を持つ。
         """
         if self.channel_name != data["sender_channel_name"]:
             await self.send(text_data=json.dumps(data["response"]))
@@ -365,7 +370,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """ルームのホストユーザーにのみ送信
 
         Args:
-            data (dict): [description]
+            data (dict): group_send 経由で渡る dict。``response`` の本文と
+                ``sender_channel_name`` を持つ。
         """
         await self.database_renew_state()
         if self.channel_name != data["sender_channel_name"] and self.anime_user.is_host:
@@ -398,8 +404,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.database_decrease_num_people()
         user_count = await self.database_get_user_count()
         if user_count < 1:
-            # 即消しだるとホストの一瞬切断・タブリロードでルームが消え、
-            # ゲストが全員 failed_join になる。猟予期間中に誰かが再参加したら join 側で
+            # 即消しだとホストの一瞬切断・タブリロードでルームが消え、
+            # ゲストが全員 failed_join になる。猶予期間中に誰かが再参加したら join 側で
             # cancel される。
             _schedule_room_delete(str(self.anime_room.room_id))
         if user_count >= 1 and self.anime_user.is_host:
@@ -443,8 +449,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """データベース上にユーザーを作成する
 
         Args:
-            user_name ([type]): ユーザーが任意に指定可能な名前
-            room_id ([type]): AnimeRoomに存在するID
+            user_name (str): ユーザーが任意に指定可能な名前
+            room_id (AnimeRoom): 紐づく AnimeRoom オブジェクト
             is_host (bool, optional): ホストユーザーの場合はTrueにする
             user_icon (str, optional): react-icons (FA6) のキー。未指定なら既定アイコン。
 
@@ -467,8 +473,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         クライアント側でルーム作成が押された場合に呼び出される
 
         Args:
-            part_id ([str]): 現在視聴している動画のID(dアニメストアが発行)
-            title ([str]): 視聴中アニメのタイトル(拡張機能がページ DOM から取得)
+            part_id (str): 現在視聴している動画のID(dアニメストアが発行)
+            title (str): 視聴中アニメのタイトル(拡張機能がページ DOM から取得)
 
         Returns:
             AnimeRoom: 作成したルームのオブジェクト
@@ -482,7 +488,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         新規に入ったユーザーはこの更新されたIDの動画にリダイレクトされる
 
         Args:
-            part_id ([type]):現在視聴している動画のID(dアニメストアが発行)
+            part_id (str): 現在視聴している動画のID(dアニメストアが発行)
         """
         self.anime_room.part_id = part_id
         self.anime_room.save()
@@ -501,6 +507,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         ``LogicalDeletionMixin`` により論理削除（``deleted_at`` 付与）。
         """
         room_id = self.anime_room.room_id
+        # ルームが終了するので、リアクションを集計テーブルへ畳んで生データを削除する。
+        fold_room_reactions(room_id)
         AnimeUser.objects.alive().filter(room_id=room_id).delete()
         AnimeRoom.objects.alive().filter(room_id=room_id).delete()
 
@@ -536,10 +544,10 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """ルームが存在していれば、ルームのオブジェクトを取得、そうでなければNoneを返す
 
         Args:
-            room_id ([type]): 検索するAnimeRoomのID
+            room_id (uuid): 検索するAnimeRoomのID
 
         Returns:
-            [AnimeRoom.objects,None]: ルームのオブジェクトか見つからない場合はNone
+            AnimeRoom | None: ルームのオブジェクト。見つからない場合はNone
         """
         if not is_valid_uuid(uuid_to_test=room_id):
             return None
