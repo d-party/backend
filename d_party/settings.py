@@ -108,6 +108,16 @@ CHANNEL_LAYERS = {
     }
 }
 
+# 統計 API のレスポンスキャッシュ。channel layer の DB 0 と分けて DB 1 を使う。
+# 毎リクエストでの DB 集計を避け、TTL（STATS_CACHE_SECONDS）失効で自然反映する。
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}/1",
+        "KEY_PREFIX": "dparty",
+    }
+}
+
 # Database
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases
 

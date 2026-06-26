@@ -55,3 +55,25 @@ class AnimeRoomHistory(models.Model):
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     room_id = models.ForeignKey(AnimeRoom, on_delete=models.CASCADE)
     type = models.CharField(max_length=20)
+
+
+class ReactionStat(models.Model):
+    """日次 × 種別に畳み込んだリアクションの集計。
+
+    リアクションは 1 タップ = 1 行（``AnimeReaction``）で大量に蓄積されるため、ルームが
+    終了する瞬間に ``cron.fold_room_reactions`` がそのルームのリアクションを日次×種別で
+    ここへ加算し、元の ``AnimeReaction`` 行はハードデリートする。これにより DB には
+    集計済みの統計だけが残り、生データは溜まらない。``(date, reaction_type)`` で一意。
+    """
+
+    date = models.DateField()
+    reaction_type = models.CharField(max_length=3, choices=ReactionType.choices)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["date", "reaction_type"], name="uniq_reactionstat_date_type"
+            )
+        ]
+        indexes = [models.Index(fields=["date"])]

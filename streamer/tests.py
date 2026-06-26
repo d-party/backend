@@ -7,7 +7,7 @@ from django.test import TransactionTestCase
 
 from .consumers import AnimePartyConsumer
 from .factories import AnimeRoomFactory, AnimeUserFactory
-from .models import AnimeRoom, AnimeUser
+from .models import AnimeReaction, AnimeRoom, AnimeUser, ReactionStat
 
 
 @pytest.mark.django_db(transaction=True)
@@ -281,6 +281,63 @@ class TestAnimePartyConsumer(TransactionTestCase):
 
         # 片方のみ切断する（num_people の二重 decrement による CHECK 制約違反を避ける）。
         await host.disconnect()
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_delete_room_folds_reactions_into_stats(self):
+        """ホストの delete_room 時に、ルームのリアクションが ReactionStat へ
+        畳み込まれ、生の AnimeReaction が物理削除されるテスト。"""
+        host = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await host.connect()
+        await host.send_json_to(
+            {
+                "action": "create",
+                "user_name": "host_user",
+                "part_id": "123456",
+                "request_id": 100,
+            }
+        )
+        create_response = await host.receive_json_from()
+        room_id = create_response["room_id"]
+        await host.receive_json_from()  # create 直後の user_list を読み飛ばす。
+
+        # MIRROR な test DB は他テストの ReactionStat 行が残りうるため差分で検証する。
+        baseline = await self.smile_stat_total()
+
+        # ホストがリアクションを送る（自分の group_send は届かないため受信しない）。
+        await host.send_json_to(
+            {"action": "reaction", "reaction_type": "smile", "request_id": 100}
+        )
+        await host.send_json_to(
+            {"action": "reaction", "reaction_type": "smile", "request_id": 100}
+        )
+
+        # ルーム削除を要求し、room_deleted を待って畳み込み完了を保証する。
+        await host.send_json_to({"action": "delete_room", "request_id": 100})
+        host_msg = await host.receive_json_from()
+        assert host_msg["message_type"] == "room_deleted"
+
+        assert await self.reaction_rows(room_id) == 0
+        assert await self.smile_stat_total() - baseline == 2
+
+        await host.disconnect()
+
+    @database_sync_to_async
+    def reaction_rows(self, room_id):
+        return AnimeReaction.objects.filter(room_id=room_id).count()
+
+    @database_sync_to_async
+    def smile_stat_total(self):
+        from django.db.models import Sum
+
+        return (
+            ReactionStat.objects.filter(reaction_type="S").aggregate(t=Sum("count"))[
+                "t"
+            ]
+            or 0
+        )
 
     @database_sync_to_async
     def room_alive(self, room_id):
