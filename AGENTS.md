@@ -119,8 +119,8 @@ docker-compose は **モノレポのルート**にある（このリポジトリ
 # d-party モノレポのルートで
 docker compose build
 docker compose up -d
-# 初回のみ
-docker compose exec django python manage.py makemigrations streamer
+# 初回のみ（migration ファイルはリポジトリにコミット済みなので migrate のみ。
+# モデルを変更したときだけローカルで makemigrations して生成物をコミットする）
 docker compose exec django python manage.py migrate
 docker compose exec django python manage.py collectstatic --noinput
 ```

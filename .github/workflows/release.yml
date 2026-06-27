@@ -24,6 +24,9 @@ jobs:
         with:
           ref: main
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Bump version and commit
         env:
           VERSION: ${{ github.event.inputs.version }}
@@ -37,9 +40,12 @@ jobs:
           s = re.sub(r'(?m)^version\s*=\s*".*"$', f'version = "{v}"', s, count=1)
           open(path, "w", encoding="utf-8").write(s)
           EOF
+          # uv.lock records the project version too; refresh it so the lock does
+          # not drift from pyproject.toml on release (deps unchanged → version only).
+          uv lock
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml
+          git add pyproject.toml uv.lock
           if git diff --cached --quiet; then
             echo "pyproject.toml already at v${VERSION}; skipping bump commit"
           else
