@@ -44,7 +44,7 @@ WebSocket（`/anime-store/party/`）を Django へ振り分けます。
 | django-boost（`LogicalDeletionMixin` / admin） | 自前 `streamer/mixins.py`・`streamer/admin.py` |
 | django-cryptography（`encrypt`） | 自前 `streamer/fields.py`（Fernet） |
 | django-dynamic-shields | 自前のプレーンな shields.io エンドポイント（`api/views.py`） |
-| django-crontab | `manage.py cleanup`（system cron が起動、`entrypoint.sh`） |
+| django-crontab | 撤去（保持期間クリーンアップ自体を廃止。リアクションはルーム終了時に `ReactionStat` へ畳み込み） |
 | distutils `StrictVersion` | `api/views.py` の strict `x.y.z` パーサ |
 | `.extra(select={"day": "date(...)"})`（MySQL 依存） | ORM `TruncDate`（DB 非依存） |
 | black | ruff |
@@ -61,11 +61,11 @@ backend/   ← リポジトリ直下が django プロジェクト
   uv.lock
   Dockerfile              python:3.14-slim + uv（venv は /opt/venv）
   .dockerignore           イメージから dev/CI 用ファイルを除外
-  entrypoint.sh           cron 登録 → runserver / gunicorn
+  entrypoint.sh           close_active_sessions（>1日経過の ghost のみ回収）→ runserver / gunicorn
   gunicorn.conf.py        uvicorn-worker
   conftest.py             テスト時は InMemoryChannelLayer に差し替え
   manage.py               /env_files/*.env があれば読み込み（無ければ環境変数）
-  .env.django             Django 用 env（DB/Redis ホスト・しきい値・CRON_SCHEDULE）
+  .env.django             Django 用 env（DB/Redis ホスト・統計キャッシュ TTL 等）
   d_party/                settings.py · asgi.py（ProtocolTypeRouter）· urls.py
   streamer/               ★同時視聴のコア
     consumers.py          AnimePartyConsumer（create/join/leave/video_operation/sync/reaction…）
@@ -74,8 +74,8 @@ backend/   ← リポジトリ直下が django プロジェクト
     mixins.py             LogicalDeletionMixin（alive/dead/delete(hard=)）
     fields.py             EncryptedCharField（保存時暗号化）
     routing.py            ws: anime-store/party/
-    cron.py               保持期間クリーンアップ関数
-    management/commands/cleanup.py
+    cron.py               fold_room_reactions（ルーム終了時にリアクションを ReactionStat へ畳み込む）
+    management/commands/close_active_sessions.py  起動時に >1日経過の ghost セッションを回収
   api/                    DRF（統計 / shields バッジ / 拡張機能バージョン確認）
   web/                    管理者向け統計チャートのテンプレート（admin/chart のみ。
                           LP・使い方・ロビーは frontend へ移行）
@@ -142,12 +142,19 @@ uvx ruff check . --fix        # Lint（自動修正）
 `DATABASE_ENGINE`, `REDIS_HOST`, `REDIS_PORT`, `LANGUAGE_CODE`, `TIME_ZONE`,
 `D_ANIME_STORE_DOMAIN`, `CHROME_EXTENSION_REQUIRED_VERSION`。
 
-### 保持期間クリーンアップ
+### ghost セッションの回収
+
+時間ベースの保持期間クリーンアップ（旧 system cron）は廃止した。リアクションはルーム終了時に
+`fold_room_reactions` が `ReactionStat` へ畳み込むため生データは溜まらない。
+
+ハードクラッシュ（graceful でない停止）で `disconnect` が走らず alive のまま残った
+`AnimeRoom`/`AnimeUser` は、起動時の `close_active_sessions` が回収する。セッションは 1 日以上
+続かない前提で、`updated_at` が 1 日以上前の alive 行だけを論理削除するため、複数レプリカで
+別 Pod の稼働中セッションを巻き込まない（手動実行も可）。
 
 ```bash
-docker compose exec django python manage.py cleanup   # 期限切れ Room/User/Reaction を削除
+docker compose exec django python manage.py close_active_sessions
 ```
-スケジュールは `CRON_SCHEDULE`（`.env.django`）。コンテナ内 system cron が実行します。
 
 ## 動作確認 URL（ローカル）
 

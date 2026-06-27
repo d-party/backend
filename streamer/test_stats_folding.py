@@ -5,9 +5,9 @@ import datetime
 import pytest
 from django.utils import timezone
 
-from .cron import animeroom_auto_logical_delete, fold_room_reactions
+from .cron import fold_room_reactions
 from .factories import AnimeRoomFactory
-from .models import AnimeReaction, AnimeRoom, ReactionStat
+from .models import AnimeReaction, ReactionStat
 
 
 def _make_reaction(room, reaction_type: str, when: datetime.datetime):
@@ -53,25 +53,3 @@ def test_fold_room_reactions_accumulates_into_existing_rows():
     fold_room_reactions(room_b.room_id)
 
     assert ReactionStat.objects.get(date=day.date(), reaction_type="TU").count == 3
-
-
-@pytest.mark.django_db
-def test_animeroom_auto_logical_delete_folds_then_soft_deletes():
-    """放置クリーンアップが、論理削除の前にリアクションを畳み込む。
-
-    cron は ``LOGICAL_DIVIDE_DAY``（既定 3 日）より古い ``updated_at`` を対象にする。
-    """
-    old = timezone.now() - datetime.timedelta(days=10)
-    room = AnimeRoomFactory()
-    # updated_at も auto_now なので明示的に過去へ更新し、クリーンアップ対象にする。
-    AnimeRoom.objects.filter(pk=room.pk).update(updated_at=old)
-    _make_reaction(room, "C", old)
-    _make_reaction(room, "C", old)
-
-    animeroom_auto_logical_delete()
-
-    assert AnimeReaction.objects.filter(room_id=room.room_id).count() == 0
-    assert ReactionStat.objects.get(date=old.date(), reaction_type="C").count == 2
-    # ルーム自体は論理削除（dead）になっている。
-    assert AnimeRoom.objects.alive().filter(room_id=room.room_id).exists() is False
-    assert AnimeRoom.objects.filter(room_id=room.room_id).exists() is True

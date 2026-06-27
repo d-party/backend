@@ -21,12 +21,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /usr/src/app
 
-# cron drives the periodic retention cleanup (see entrypoint.sh).
-# psycopg[binary] bundles libpq, so no system postgres client is required.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends cron \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# No system packages are needed: psycopg[binary] bundles libpq, and the former
+# system-cron retention job has been removed (reactions are folded into
+# ReactionStat on room end; see streamer/cron.py).
 
 # Install dependencies first for better layer caching.
 COPY pyproject.toml uv.lock ./
