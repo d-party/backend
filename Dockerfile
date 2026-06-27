@@ -30,8 +30,11 @@ RUN apt-get update \
 
 # Install dependencies first for better layer caching.
 COPY pyproject.toml uv.lock ./
+# autobahn (daphne 経由) は NVX CFFI 拡張のコンパイルに失敗すると pure-Python
+# wheel へのフォールバックを拒否する。arm64 ネイティブビルドでこれに当たるため、
+# pure-Python ビルドを明示する（NVX は UTF-8 検証の最適化にすぎず挙動は同じ）。
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project
+    AUTOBAHN_USE_NVX=0 uv sync --frozen --no-install-project
 
 COPY . .
 
