@@ -55,11 +55,13 @@ jobs:
         uses: astral-sh/setup-uv@v5
       - name: install dependencies
         run: uv sync --frozen
+      # Migration files are committed to the repo, so CI must not generate
+      # them. Instead, fail if a model change is missing its migration, then
+      # apply the committed migrations.
+      - name: check for missing migrations
+        run: uv run python manage.py makemigrations --check --dry-run
       - name: migrate
-        run: |
-          uv run python manage.py makemigrations
-          uv run python manage.py makemigrations streamer
-          uv run python manage.py migrate
+        run: uv run python manage.py migrate
       - name: run pytest
         run: uv run pytest --cov --cov-report=xml
       - name: Upload coverage to Codecov
