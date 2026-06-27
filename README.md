@@ -105,14 +105,6 @@ docker compose exec django pip-licenses
 docker compose exec django pipdeptree --graph-output dot > dependencies.dot
 ```
 
-### cronの標準出力/エラー出力を取得
-
-保持期間クリーンアップ（`manage.py cleanup`）はコンテナ内 system cron が実行します。
-
-```bash
-docker compose exec django cat /var/log/cron.log
-```
-
 ### Chrome 拡張機能からローカルバックエンドへ接続する（PNA の無効化）
 
 dアニメストア (`https://anime.dmkt-sp.jp`) のページに注入された Chrome 拡張機能の
