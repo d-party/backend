@@ -69,3 +69,30 @@ jobs:
           body: ${{ github.event.inputs.release_note }}
           generate_release_notes: true
           target_commitish: main
+
+  # release ジョブが push した `vX.Y.Z` タグの commit を native arm64 でビルドし、
+  # GHCR(public) へ push する（prod-kube / Argo CD の配信元）。backend は設定を
+  # すべて runtime env で読むため build-args は不要。初回 push 後に GHCR Package
+  # を一度だけ Public にすること。
+  build-push:
+    needs: release
+    runs-on: ubuntu-24.04-arm           # native arm64 (no QEMU)
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ github.event.inputs.version }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          # version 入力からタグを直接組み立てる（git タグと完全一致・`v` 付き）。
+          tags: ghcr.io/d-party/backend:v${{ github.event.inputs.version }}
