@@ -97,6 +97,9 @@ class OperationNotification(ResponseBaseFormat):
 class Reaction(ResponseBaseFormat):
     action: str = "reaction"
     reaction_type: str
+    # 送信者。拡張機能の「バッジ表示」等で「ユーザー名 : リアクション」を出すため
+    # に同梱する。旧クライアントは無視する。
+    user: User
 
 
 class SyncRequest(ResponseBaseFormat):
