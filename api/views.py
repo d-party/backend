@@ -139,6 +139,15 @@ def _resample_per_day(
     return frame
 
 
+class HealthCheckAPI(APIView):
+    """Lightweight liveness probe. Returns 200 when the application is running."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, format=None) -> Response:
+        return Response(status=status.HTTP_200_OK)
+
+
 class ChromeExtensionVersionCheckAPI(APIView):
     """Check whether a Chrome extension version is compatible with the backend."""
 
