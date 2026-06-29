@@ -4,6 +4,10 @@ from . import views
 
 urlpatterns = [
     path(
+        "v1/health",
+        views.HealthCheckAPI.as_view(),
+    ),
+    path(
         "v1/chrome-extension/version-check",
         views.ChromeExtensionVersionCheckAPI.as_view(),
     ),

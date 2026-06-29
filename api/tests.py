@@ -22,6 +22,19 @@ def _clear_reaction_tables() -> None:
     AnimeReaction.objects.all().delete(hard=True)
 
 
+class TestHealthCheckAPI(APITestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+        self.endpoint = "/api/v1/health"
+
+    @pytest.mark.django_db
+    def test_health_check_ok_200(self):
+        """ヘルスチェックエンドポイントが 200 を返し、ボディが空であることを確認"""
+        response = self.client.get(self.endpoint)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.content == b""
+
+
 class TestVersionCheckAPI(APITestCase):
     def setUp(self) -> None:
         self.client = APIClient()
