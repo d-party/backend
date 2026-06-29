@@ -324,6 +324,61 @@ class TestAnimePartyConsumer(TransactionTestCase):
 
         await host.disconnect()
 
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_extra_reaction_broadcasts_but_is_not_persisted(self):
+        """エクストラリアクション（Noto コードポイント id）は他参加者へブロード
+        キャストされるが、統計用に永続化はされない（AnimeReaction を作らない）。"""
+        host = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await host.connect()
+        await host.send_json_to(
+            {
+                "action": "create",
+                "user_name": "host_user",
+                "part_id": "123456",
+                "request_id": 100,
+            }
+        )
+        create_response = await host.receive_json_from()
+        room_id = create_response["room_id"]
+        await host.receive_json_from()  # create 直後の user_list を読み飛ばす。
+
+        guest = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await guest.connect()
+        await guest.send_json_to(
+            {
+                "action": "join",
+                "user_name": "guest_user",
+                "room_id": room_id,
+                "part_id": "123456",
+                "request_id": 100,
+            }
+        )
+        # ゲストがエクストラリアクション（カタログ id = 絵文字コードポイント）を送る。
+        extra_id = "1f600"
+        await guest.send_json_to(
+            {"action": "reaction", "reaction_type": extra_id, "request_id": 100}
+        )
+
+        # ホストはブロードキャストを受信する（配信は従来どおり行われる）。参加に伴う
+        # user_add / user_list 等が先に届きうるので reaction が来るまで読み進める。
+        msg = await host.receive_json_from()
+        while msg["action"] != "reaction":
+            msg = await host.receive_json_from()
+        assert msg["reaction_type"] == extra_id
+        # 送信者を同梱する（バッジ表示の「ユーザー名 : リアクション」用）。
+        assert msg["user"]["user_name"] == "guest_user"
+
+        # ただし統計用の永続化はされない。
+        assert await self.reaction_rows(room_id) == 0
+
+        await guest.disconnect()
+        await host.disconnect()
+
     @database_sync_to_async
     def reaction_rows(self, room_id):
         return AnimeReaction.objects.filter(room_id=room_id).count()

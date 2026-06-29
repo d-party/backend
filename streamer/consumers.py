@@ -299,10 +299,18 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
 
         Args:
             reaction_type (str): リアクションの種類
+
+        デフォルトリアクション（``ReactionType`` のメンバ）はブロードキャストに加えて
+        統計用に永続化する。拡張機能側のエクストラリアクション（Noto コードポイントの
+        id）はブロードキャストのみ行い、**永続化しない**（統計対象外）。これにより
+        未知の id でも ``ReactionType[...]`` の ``KeyError`` を起こさず安全に配信する。
         """
         if self.anime_room is None or self.anime_user is None:
             return
-        reaction = Reaction(reaction_type=reaction_type)
+        reaction = Reaction(
+            reaction_type=reaction_type,
+            user=User(**self.anime_user.__dict__).model_dump(),
+        )
         response_data = GroupSend(
             response=reaction, sender_channel_name=self.channel_name
         )
@@ -310,7 +318,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             str(self.anime_room.room_id),
             json.loads(json.dumps(response_data.model_dump())),
         )
-        await self.database_create_reaction(reaction_type=reaction_type)
+        if reaction_type in ReactionType.__members__:
+            await self.database_create_reaction(reaction_type=reaction_type)
 
     @action()
     async def user_list(self, **kwargs):
