@@ -64,7 +64,8 @@ class LogicalDeletionMixin(models.Model):
         if hard:
             return super().delete(using=using, keep_parents=keep_parents)
         self.deleted_at = self.get_deleted_value()
-        return self.save()
+        self.save(using=using, update_fields=[DELETE_FLAG_FIELD])
+        return (1, {self._meta.label: 1})
 
     def revive(self, force_update=False, using=None):
         self.deleted_at = None
