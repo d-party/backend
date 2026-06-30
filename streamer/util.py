@@ -1,4 +1,3 @@
-from json import JSONEncoder
 from uuid import UUID
 
 
@@ -28,10 +27,3 @@ def is_valid_uuid(uuid_to_test, version=4):
     except ValueError:
         return False
     return str(uuid_obj) == uuid_to_test
-
-
-def uuid_json_encoder(self, obj):
-    old_default = JSONEncoder.default
-    if isinstance(obj, UUID):
-        return str(obj)
-    return old_default(self, obj)

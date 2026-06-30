@@ -19,7 +19,6 @@ dependencies = [
     "django-extensions>=3.2.3",
     "pydantic>=2.9",
     "psycopg[binary]>=3.2",
-    "pandas>=2.2",
     "gunicorn>=23.0",
     "uvicorn[standard]>=0.34",
     "uvicorn-worker>=0.3",

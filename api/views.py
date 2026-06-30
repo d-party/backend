@@ -4,7 +4,6 @@ import re
 import urllib.parse
 from collections import defaultdict
 
-import pandas as pd
 from django.core.cache import cache
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncDate
@@ -122,21 +121,39 @@ def _per_day_counts(model, since: datetime.date | None = None) -> list[dict]:
 
 def _resample_per_day(
     rows: list[dict], since: datetime.date | None = None
-) -> pd.DataFrame:
+) -> list[dict]:
     """Fill gaps so every calendar day has a count.
 
-    The series always extends to today; when ``since`` is given it also starts
-    exactly at ``since`` (padding the leading days with zeros) so the window has
-    a fixed length regardless of when the first event happened.
+    Returns ``[{"day": date, "count": int}, ...]`` for every calendar day in the
+    window, in ascending order, padding missing days with ``0``. The series
+    always extends to today; when ``since`` is given it also starts exactly at
+    ``since`` so the window has a fixed length regardless of when the first
+    event happened.
+
+    A plain loop replaces the former ``pandas.DataFrame.asfreq`` round-trip,
+    which pulled in the heavy pandas dependency only to forward-fill zero days.
     """
     today = datetime.date.today()
-    if since is not None and (len(rows) == 0 or rows[0]["day"] != since):
-        rows = [{"day": since, "count": 0}] + rows
-    if len(rows) == 0 or rows[-1]["day"] != today:
-        rows = rows + [{"day": today, "count": 0}]
-    frame = pd.DataFrame(rows).set_index("day").asfreq("1D", fill_value=0)
-    frame["day"] = frame.index.map(lambda x: x.to_pydatetime().date())
-    return frame
+    counts = {row["day"]: int(row["count"]) for row in rows}
+    if since is not None:
+        start = since
+    elif rows:
+        start = rows[0]["day"]
+    else:
+        start = today
+    # 終端は常に今日まで伸ばす（最後のイベント日が今日より前でも 0 埋めで今日まで含める）。
+    end = max(today, start)
+    result: list[dict] = []
+    day = start
+    while day <= end:
+        result.append({"day": day, "count": counts.get(day, 0)})
+        day += datetime.timedelta(days=1)
+    return result
+
+
+def _mean_per_day(rows: list[dict]) -> float:
+    """Mean of the daily counts over the window (matches pandas ``Series.mean``)."""
+    return sum(row["count"] for row in rows) / len(rows) if rows else 0.0
 
 
 class HealthCheckAPI(APIView):
@@ -191,8 +208,7 @@ class AnimeActiveUserPerDayAPI(APIView):
         since = _since(days)
 
         def produce():
-            frame = _resample_per_day(_per_day_counts(AnimeUser, since), since)
-            return frame.to_dict(orient="records")
+            return _resample_per_day(_per_day_counts(AnimeUser, since), since)
 
         return Response({"data": _cached(f"stats:active-user-per-day:{days}", produce)})
 
@@ -210,8 +226,7 @@ class AnimeActiveRoomPerDayAPI(APIView):
         since = _since(days)
 
         def produce():
-            frame = _resample_per_day(_per_day_counts(AnimeRoom, since), since)
-            return frame.to_dict(orient="records")
+            return _resample_per_day(_per_day_counts(AnimeRoom, since), since)
 
         return Response({"data": _cached(f"stats:active-room-per-day:{days}", produce)})
 
@@ -338,8 +353,8 @@ class RoomCountShieldsAPI(_ShieldsView):
 
 class RoomCountParDayShieldsAPI(_ShieldsView):
     def shields_data(self) -> dict:
-        frame = _resample_per_day(_per_day_counts(AnimeRoom))
-        mean = "{:.2f}".format(frame["count"].mean()) + "/day"
+        rows = _resample_per_day(_per_day_counts(AnimeRoom))
+        mean = f"{_mean_per_day(rows):.2f}/day"
         return {
             "label": "Room",
             "message": mean,
@@ -355,8 +370,8 @@ class UserCountShieldsAPI(_ShieldsView):
 
 class UserCountParDayShieldsAPI(_ShieldsView):
     def shields_data(self) -> dict:
-        frame = _resample_per_day(_per_day_counts(AnimeUser))
-        mean = "{:.2f}".format(frame["count"].mean()) + "/day"
+        rows = _resample_per_day(_per_day_counts(AnimeUser))
+        mean = f"{_mean_per_day(rows):.2f}/day"
         return {
             "label": "User",
             "message": mean,

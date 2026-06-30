@@ -29,7 +29,9 @@ DEBUG = os.environ["DEBUG"] == "1"
 
 ALLOWED_HOSTS = [os.environ["MY_DOMAIN"], "www." + os.environ["MY_DOMAIN"], "django"]
 if DEBUG:
-    ALLOWED_HOSTS += ["*"]
+    # 開発・テスト用の明示的な許可ホスト。``["*"]`` だと誤って DEBUG=1 のまま本番に
+    # 出たとき Host ヘッダインジェクションを許してしまうため、ワイルドカードは使わない。
+    ALLOWED_HOSTS += ["localhost", "127.0.0.1", "[::1]", "testserver"]
 CSRF_TRUSTED_ORIGINS = [
     "https://*." + os.environ["MY_DOMAIN"],
     "https://*.127.0.0.1",

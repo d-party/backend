@@ -3,6 +3,7 @@ import json
 import uuid
 
 from channels.db import database_sync_to_async
+from django.db import transaction
 from djangochannelsrestframework.decorators import action
 from djangochannelsrestframework.generics import GenericAsyncAPIConsumer
 
@@ -26,7 +27,7 @@ from .format import (
     VideoOperation,
 )
 from .models import AnimeReaction, AnimeRoom, AnimeUser, ReactionType
-from .util import is_valid_uuid, uuid_json_encoder
+from .util import is_valid_uuid
 
 # ホストの WS が一瞬落ちた / タブをリロードしただけでルームが即消え
 # すると、ゲストが共有リンクを踏んだときにもう failed_join になる。
@@ -84,7 +85,6 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        json.JSONEncoder.default = uuid_json_encoder
         # 入室したAnimeRoomのオブジェクト
         self.anime_room = None
         # ユーザー情報
@@ -120,7 +120,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         user = User(**self.anime_user.__dict__)
         create = Create(room_id=self.anime_room.room_id, user=user)
-        await self.send(text_data=json.dumps(create.model_dump()))
+        await self.send(text_data=json.dumps(create.model_dump(mode="json")))
         user_list = await self.database_user_list()
         user_list_data = UserList(user_list=user_list)
         response_data = RoomSend(
@@ -129,7 +129,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
 
     @action()
@@ -152,7 +152,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             # 早期 return するだけで WS が開いたままになり、後続の sync_request 等が
             # self.anime_user.__dict__ で AttributeError を起こして 1011 close を招く。
             failed = ServerMessage(message_type="failed_join")
-            await self.send(text_data=json.dumps(failed.model_dump()))
+            await self.send(text_data=json.dumps(failed.model_dump(mode="json")))
             await self.close()
             return
         # このルームに猶予期間の削除予約があれば取り消す
@@ -166,7 +166,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         user = User(**self.anime_user.__dict__)
         join = Join(room_id=self.anime_room.room_id, user=user)
-        await self.send(text_data=json.dumps(join.model_dump()))
+        await self.send(text_data=json.dumps(join.model_dump(mode="json")))
         user_add = UserAdd(user=user)
         response_data = GroupSend(
             response=user_add,
@@ -175,7 +175,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.database_increase_num_people()
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
         user_list = await self.database_user_list()
         user_list_data = UserList(user_list=user_list)
@@ -185,7 +185,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
 
     @action()
@@ -226,7 +226,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             await self.database_update_room_part_id(video_operation.option.part_id)
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
 
     @action()
@@ -244,7 +244,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
 
     @action()
@@ -267,7 +267,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
 
     @action()
@@ -290,7 +290,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
 
     @action()
@@ -316,7 +316,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
         if reaction_type in ReactionType.__members__:
             await self.database_create_reaction(reaction_type=reaction_type)
@@ -328,7 +328,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             return
         user_list = await self.database_user_list()
         response_data = UserList(user_list=user_list)
-        await self.send(text_data=json.dumps(response_data.model_dump()))
+        await self.send(text_data=json.dumps(response_data.model_dump(mode="json")))
 
     @action()
     async def delete_room(self, **kwargs):
@@ -352,7 +352,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             room_id_str,
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
         await self.database_delete_room_and_users()
 
@@ -418,19 +418,19 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             # cancel される。
             _schedule_room_delete(str(self.anime_room.room_id))
         if user_count >= 1 and self.anime_user.is_host:
-            next_host = await self.database_get_next_host_or_none()
-            await self.database_host_change_user(next_host.user_id)
-            server_message = ServerMessage(message_type="host_change")
-            send_data = HostSend(
-                response=server_message, sender_channel_name=self.channel_name
-            )
-            await self.channel_layer.group_send(
-                str(self.anime_room.room_id),
-                json.loads(json.dumps(send_data.model_dump())),
-            )
+            next_host = await self.database_promote_next_host()
+            if next_host is not None:
+                server_message = ServerMessage(message_type="host_change")
+                send_data = HostSend(
+                    response=server_message, sender_channel_name=self.channel_name
+                )
+                await self.channel_layer.group_send(
+                    str(self.anime_room.room_id),
+                    send_data.model_dump(mode="json"),
+                )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
         user_list = await self.database_user_list()
         user_list_data = UserList(user_list=user_list)
@@ -440,7 +440,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
-            json.loads(json.dumps(response_data.model_dump())),
+            response_data.model_dump(mode="json"),
         )
         await self.channel_layer.group_discard(
             str(self.anime_room.room_id), self.channel_name
@@ -472,9 +472,8 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
 
     @database_sync_to_async
     def database_delete_user(self):
-        """データベースからユーザーを削除する"""
+        """データベースからユーザーを削除する（論理削除）"""
         self.anime_user.delete()
-        self.anime_user.save()
 
     @database_sync_to_async
     def database_create_room(self, part_id: str, title: str = ""):
@@ -500,12 +499,6 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             part_id (str): 現在視聴している動画のID(dアニメストアが発行)
         """
         self.anime_room.part_id = part_id
-        self.anime_room.save()
-
-    @database_sync_to_async
-    def database_delete_room(self):
-        """ルームの論理削除を行う"""
-        self.anime_room.delete()
         self.anime_room.save()
 
     @database_sync_to_async
@@ -538,9 +531,27 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         self.anime_room.save()
 
     @database_sync_to_async
-    def database_get_next_host_or_none(self):
-        ar = AnimeRoom.objects.get(room_id=self.anime_room.room_id)
-        return ar.inroom.alive().earliest("created_at")
+    def database_promote_next_host(self):
+        """残った生存ユーザーのうち最古の 1 人をホストへアトミックに昇格させる。
+
+        次ホストの選定と昇格を 1 トランザクション（``select_for_update``）で行う。
+        「選定 → 昇格」の await 境界で当人が離脱し、論理削除済みの行をホストに
+        昇格させてしまう競合を防ぐ（旧実装は ``.earliest()`` で空のとき
+        ``DoesNotExist`` を投げて 1011 close を招いていた）。ルームが空なら ``None``。
+        """
+        with transaction.atomic():
+            next_user = (
+                AnimeUser.objects.select_for_update()
+                .alive()
+                .filter(room_id=self.anime_room.room_id)
+                .order_by("created_at")
+                .first()
+            )
+            if next_user is None:
+                return None
+            next_user.is_host = True
+            next_user.save(update_fields=["is_host"])
+            return next_user
 
     @database_sync_to_async
     def database_get_user_count(self):
@@ -563,13 +574,6 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         # 論理削除済みのルームには参加させない（旧実装は .filter() だけで deleted_at を
         # 無視していたため、削除直後のルームに join できてしまうバグがあった）。
         return AnimeRoom.objects.alive().filter(room_id=room_id).first()
-
-    @database_sync_to_async
-    def database_host_change_user(self, user_id):
-        au = AnimeUser.objects.get(user_id=user_id)
-        au.is_host = True
-        au.save()
-        return au
 
     @database_sync_to_async
     def database_renew_state(self):

@@ -47,9 +47,9 @@ class TestAnimePartyConsumer(TransactionTestCase):
         # 送信した user_icon が往復することを確認
         assert response["user"]["user_icon"] == user_icon1
         # userがデータベースに作られていることを確認
-        assert self.anime_user_exist(response["user"]["user_id"])
+        assert await self.anime_user_exist(response["user"]["user_id"])
         # roomがデータベースに作られていることを確認
-        assert self.anime_room_exist(response["room_id"])
+        assert await self.anime_room_exist(response["room_id"])
         # ルーム作成時に送られたタイトルが保存されていることを確認
         room = await self.get_anime_room(response["room_id"])
         assert room.title == title1
@@ -78,7 +78,7 @@ class TestAnimePartyConsumer(TransactionTestCase):
         response = await communicator.receive_json_from()
         assert response["action"] == "join"
         # userがデータベースに作られていることを確認
-        assert self.anime_user_exist(response["user"]["user_id"])
+        assert await self.anime_user_exist(response["user"]["user_id"])
         # user_icon を送らない旧拡張は既定アイコンにフォールバックする（後方互換）
         assert response["user"]["user_icon"] == "FaRegUser"
         await communicator.disconnect()
