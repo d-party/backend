@@ -18,6 +18,37 @@ class AnimeRoom(LogicalDeletionMixin):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class Setting(models.Model):
+    """ルームごとの詳細設定。ルームと 1:1 で対応し、``room`` を主キーとして共有する。
+
+    ルーム作成時に既定値（すべて ``False``）で自動生成され、以降はオーナー（ホスト）
+    ユーザーのみが WebSocket（Channels）経由で更新できる。オーナー以外からの更新要求は
+    consumer 側で無視される。旧クライアントは設定を送らないため、全 ``False`` = 現行の
+    ルーム挙動となり後方互換が保たれる。
+
+    Attributes:
+        room: 対応する ``AnimeRoom``。主キー兼外部キー（ルームキーをそのまま PK にする）。
+        one_way: 一方通行（アクセラレーター）モード。オーナーのみが動画操作でき、
+            オーナー以外からの動画操作はブロックされる（リアクションは許可）。有効時は
+            オーナー退室でルームが自動削除される（``owner_leave_delete`` を含意）。
+        owner_leave_delete: オーナー退室時にルームを自動削除する。
+        disable_reaction: リアクションを禁止する。ブロードキャストも永続化もされない
+            （送信者自身の画面にはクライアント側でローカル表示される）。
+    """
+
+    room = models.OneToOneField(
+        AnimeRoom,
+        primary_key=True,
+        on_delete=models.CASCADE,
+        related_name="setting",
+    )
+    one_way = models.BooleanField(default=False)
+    owner_leave_delete = models.BooleanField(default=False)
+    disable_reaction = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class AnimeUser(LogicalDeletionMixin):
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user_name = EncryptedCharField(default="user", max_length=20)

@@ -70,7 +70,7 @@ backend/   ← リポジトリ直下が django プロジェクト
   streamer/               ★同時視聴のコア
     consumers.py          AnimePartyConsumer（create/join/leave/video_operation/sync/reaction…）
     format.py             pydantic v2 メッセージ定義（公開プロトコル）
-    models.py             AnimeRoom / AnimeUser / AnimeReaction / AnimeRoomHistory
+    models.py             AnimeRoom / AnimeUser / AnimeReaction / AnimeRoomHistory / Setting（ルーム詳細設定, 1:1）
     mixins.py             LogicalDeletionMixin（alive/dead/delete(hard=)）
     fields.py             EncryptedCharField（保存時暗号化）
     routing.py            ws: anime-store/party/
@@ -177,6 +177,12 @@ docker compose exec django python manage.py close_active_sessions
   `SECRET_KEY` 由来）。`SECRET_KEY` を変えると既存データは復号できなくなる。
 - **API 契約**: `api/urls.py` のパスとレスポンス形状（特に shields は
   `{"schemaVersion":1, ...}`）は外部バッジ・拡張から参照される。
+- **ルーム詳細設定（後方互換）**: `Setting` は create 時に既定値（すべて `False`）で自動生成。
+  設定は create メッセージを変えず、オーナー限定の `update_setting` アクションで適用する
+  （旧拡張は送らないため全 `False` = 現行挙動）。一方通行モード（`one_way`）は非オーナーの
+  `video_operation` をブロックし、オーナー退室で自動削除（`owner_leave_delete` を含意）。
+  `disable_reaction` は配信・永続化を行わない（自分の表示はクライアント側担保）。`room_setting`
+  はサーバ push（join/create/更新時）で配布し、クライアント発の read は設けない。
 
 ## サブモジュール運用
 

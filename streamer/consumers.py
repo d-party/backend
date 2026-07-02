@@ -17,7 +17,9 @@ from .format import (
     OperationNotification,
     Reaction,
     RoomSend,
+    RoomSetting,
     ServerMessage,
+    SettingSend,
     SyncRequest,
     SyncResponse,
     User,
@@ -26,7 +28,7 @@ from .format import (
     UserSend,
     VideoOperation,
 )
-from .models import AnimeReaction, AnimeRoom, AnimeUser, ReactionType
+from .models import AnimeReaction, AnimeRoom, AnimeUser, ReactionType, Setting
 from .util import is_valid_uuid
 
 # ホストの WS が一瞬落ちた / タブをリロードしただけでルームが即消え
@@ -89,6 +91,22 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         self.anime_room = None
         # ユーザー情報
         self.anime_user = None
+        # ルームの詳細設定のローカルキャッシュ（{one_way, owner_leave_delete,
+        # disable_reaction}）。create/join で読み込み、setting_send で更新する。
+        # 一方通行モードの動画操作ブロック等をこのキャッシュで判定し、都度 DB を引かない。
+        self.room_setting = None
+
+    # ── 詳細設定のキャッシュ参照ヘルパ（純粋・同期）─────────────────────────────
+    def _one_way(self) -> bool:
+        return bool((self.room_setting or {}).get("one_way"))
+
+    def _disable_reaction(self) -> bool:
+        return bool((self.room_setting or {}).get("disable_reaction"))
+
+    def _effective_owner_leave_delete(self) -> bool:
+        """オーナー退室時自動削除の実効値。一方通行モードはこれを含意する。"""
+        s = self.room_setting or {}
+        return bool(s.get("owner_leave_delete")) or bool(s.get("one_way"))
 
     async def connect(self):
         await self.accept()
@@ -130,6 +148,15 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.channel_layer.group_send(
             str(self.anime_room.room_id),
             response_data.model_dump(mode="json"),
+        )
+        # ルームと 1:1 の詳細設定を既定値(すべて False)で自動生成し、作成者へ通知する。
+        # 初期設定はこの直後にクライアントが update_setting で適用する運用のため、create
+        # メッセージ自体は変更しない（設定を送らない旧拡張は全 False = 現行挙動）。
+        self.room_setting = await self.database_get_or_create_setting()
+        await self.send(
+            text_data=json.dumps(
+                RoomSetting(**self.room_setting).model_dump(mode="json")
+            )
         )
 
     @action()
@@ -187,6 +214,14 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             str(self.anime_room.room_id),
             response_data.model_dump(mode="json"),
         )
+        # 参加者へ現在の詳細設定を通知する。非オーナーはこれを見て一方通行モード時の
+        # 動画操作 UI を抑止できる（強制自体はサーバ側 video_operation で行う）。
+        self.room_setting = await self.database_load_setting()
+        await self.send(
+            text_data=json.dumps(
+                RoomSetting(**self.room_setting).model_dump(mode="json")
+            )
+        )
 
     @action()
     async def leave(self, **kwargs):
@@ -209,6 +244,10 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         if self.anime_room is None or self.anime_user is None:
             return
         await self.database_renew_state()
+        # 一方通行(アクセラレーター)モードでは、オーナー以外の動画操作をブロックする。
+        # is_host を先に見て短絡するのでホスト操作にはオーバーヘッドが無い。
+        if not self.anime_user.is_host and self._one_way():
+            return
         video_operation = VideoOperation(
             room_id=self.anime_room.room_id,
             operation=operation,
@@ -307,6 +346,11 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """
         if self.anime_room is None or self.anime_user is None:
             return
+        # リアクション禁止設定では、ブロードキャストも永続化も行わない。送信者自身の画面
+        # には拡張機能側がローカルに表示する（「自分にだけは表示される」）ため、サーバは
+        # ここで黙って破棄するだけでよい。
+        if self._disable_reaction():
+            return
         reaction = Reaction(
             reaction_type=reaction_type,
             user=User(**self.anime_user.__dict__).model_dump(),
@@ -356,6 +400,40 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
         await self.database_delete_room_and_users()
 
+    @action()
+    async def update_setting(
+        self,
+        one_way: bool = False,
+        owner_leave_delete: bool = False,
+        disable_reaction: bool = False,
+        **kwargs,
+    ):
+        """ルームの詳細設定を更新するアクション（オーナー限定）。
+
+        入室時の初期設定・入室後の変更の両方でクライアントから送られる。ホスト（オーナー）
+        以外からの要求は無視する。更新後はルーム全員へ ``room_setting`` を配信し、各接続の
+        ローカルキャッシュ（一方通行判定等に使用）も同時に更新する。
+        """
+        if self.anime_room is None or self.anime_user is None:
+            return
+        await self.database_renew_state()
+        if not self.anime_user.is_host:
+            return
+        self.room_setting = await self.database_update_setting(
+            one_way=bool(one_way),
+            owner_leave_delete=bool(owner_leave_delete),
+            disable_reaction=bool(disable_reaction),
+        )
+        room_setting = RoomSetting(**self.room_setting)
+        response_data = SettingSend(
+            response=room_setting,
+            sender_channel_name=self.channel_name,
+        )
+        await self.channel_layer.group_send(
+            str(self.anime_room.room_id),
+            response_data.model_dump(mode="json"),
+        )
+
     async def room_send(self, data: dict):
         """自分を含むグループに所属するユーザーへの一斉送信
 
@@ -364,6 +442,20 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
                 送る本文を持つ。
         """
         await self.send(text_data=json.dumps(data["response"]))
+
+    async def setting_send(self, data: dict):
+        """詳細設定の変更を全員（送信者含む）へ配信し、各接続のローカルキャッシュも更新する。
+
+        ``room_send`` と違い、クライアントへ転送するだけでなく、この接続が一方通行モード等の
+        判定に使う ``self.room_setting`` を最新値へ更新する（都度 DB を引かないための同期）。
+        """
+        response = data["response"]
+        self.room_setting = {
+            "one_way": bool(response.get("one_way", False)),
+            "owner_leave_delete": bool(response.get("owner_leave_delete", False)),
+            "disable_reaction": bool(response.get("disable_reaction", False)),
+        }
+        await self.send(text_data=json.dumps(response))
 
     async def group_send(self, data: dict):
         """自分以外のグループに所属するユーザーへの一斉送信
@@ -412,6 +504,24 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.database_delete_user()
         await self.database_decrease_num_people()
         user_count = await self.database_get_user_count()
+        # オーナー退室時自動削除（一方通行モードはこれを含意）。オーナーが抜けたら残りの
+        # 参加者ごとルームを即削除し、全員へ room_deleted を通知する。猶予削除やホスト委譲は
+        # 行わない。
+        if self.anime_user.is_host and self._effective_owner_leave_delete():
+            room_id_str = str(self.anime_room.room_id)
+            _cancel_pending_room_delete(room_id_str)
+            server_message = ServerMessage(message_type="room_deleted")
+            send_data = RoomSend(
+                response=server_message,
+                sender_channel_name=self.channel_name,
+            )
+            await self.channel_layer.group_send(
+                room_id_str,
+                send_data.model_dump(mode="json"),
+            )
+            await self.database_delete_room_and_users()
+            await self.channel_layer.group_discard(room_id_str, self.channel_name)
+            return
         if user_count < 1:
             # 即消しだとホストの一瞬切断・タブリロードでルームが消え、
             # ゲストが全員 failed_join になる。猶予期間中に誰かが再参加したら join 側で
@@ -598,3 +708,52 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         return AnimeReaction.objects.create(
             room_id=self.anime_room, reaction_type=ReactionType[reaction_type].value
         )
+
+    @staticmethod
+    def _setting_to_dict(setting: Setting) -> dict:
+        return {
+            "one_way": setting.one_way,
+            "owner_leave_delete": setting.owner_leave_delete,
+            "disable_reaction": setting.disable_reaction,
+        }
+
+    @database_sync_to_async
+    def database_get_or_create_setting(self):
+        """ルームの詳細設定を既定値で取得/作成する（ルーム作成時に呼ぶ）。"""
+        setting, _ = Setting.objects.get_or_create(room=self.anime_room)
+        return self._setting_to_dict(setting)
+
+    @database_sync_to_async
+    def database_load_setting(self):
+        """ルームの詳細設定を読み込む。無ければ既定値（すべて False）を返す。
+
+        旧クライアントが作成した Setting 行の無いルームへ後方互換で参加する場合にも
+        安全に既定値へフォールバックする。
+        """
+        setting = Setting.objects.filter(room=self.anime_room).first()
+        if setting is None:
+            return {
+                "one_way": False,
+                "owner_leave_delete": False,
+                "disable_reaction": False,
+            }
+        return self._setting_to_dict(setting)
+
+    @database_sync_to_async
+    def database_update_setting(
+        self, one_way: bool, owner_leave_delete: bool, disable_reaction: bool
+    ):
+        """ルームの詳細設定を更新する（オーナー限定の update_setting から呼ぶ）。"""
+        setting, _ = Setting.objects.get_or_create(room=self.anime_room)
+        setting.one_way = one_way
+        setting.owner_leave_delete = owner_leave_delete
+        setting.disable_reaction = disable_reaction
+        setting.save(
+            update_fields=[
+                "one_way",
+                "owner_leave_delete",
+                "disable_reaction",
+                "updated_at",
+            ]
+        )
+        return self._setting_to_dict(setting)
