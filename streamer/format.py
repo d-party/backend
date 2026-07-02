@@ -127,6 +127,20 @@ class UserList(ResponseBaseFormat):
     user_list: list[User]
 
 
+class RoomSetting(ResponseBaseFormat):
+    """ルームの詳細設定を通知するメッセージ。
+
+    ルーム作成/参加時に当該クライアントへ push され、オーナーが更新した際は
+    ルーム全員へブロードキャストされる。旧クライアントは未知の ``action`` として
+    無視するため後方互換。フィールドはすべて既定 ``False``。
+    """
+
+    action: str = "room_setting"
+    one_way: bool = False
+    owner_leave_delete: bool = False
+    disable_reaction: bool = False
+
+
 class BaseGroupSend(BaseModel):
     type: str
     sender_channel_name: str
@@ -148,3 +162,13 @@ class HostSend(BaseGroupSend):
 class UserSend(BaseGroupSend):
     type: str = "user_send"
     to_user: User
+
+
+class SettingSend(BaseGroupSend):
+    """詳細設定の変更を全員（送信者含む）へ配信するグループ送信。
+
+    ``room_send`` と同様に全員へ届けるが、各 consumer が一方通行モード等の判定に使う
+    ローカルキャッシュを更新できるよう、専用ハンドラ（``setting_send``）へ振り分ける。
+    """
+
+    type: str = "setting_send"
