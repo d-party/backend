@@ -85,6 +85,9 @@ class VideoOperation(ResponseBaseFormat):
     operation: str
     user: User
     option: Option
+    # 現在視聴中のエピソードタイトル（拡張機能がページ DOM から取得して同梱）。タイマー画面が
+    # エピソード切替に追従して表示するために使う。旧クライアントは送らないため任意（None）。
+    title: str | None = None
 
 
 class OperationNotification(ResponseBaseFormat):
@@ -125,6 +128,19 @@ class ServerMessage(ResponseBaseFormat):
 class UserList(ResponseBaseFormat):
     action: str = "user_list"
     user_list: list[User]
+
+
+class SpectateAck(ResponseBaseFormat):
+    """観覧専用（spectator）参加の受理応答。
+
+    タイマー画面（拡張機能なしのユーザー）が最初の video_operation ブロードキャストを
+    受け取る前に、現在の視聴対象（part_id / title）を把握できるよう初期状態を返す。
+    """
+
+    action: str = "spectate"
+    room_id: UUID
+    part_id: str
+    title: str = ""
 
 
 class BaseGroupSend(BaseModel):

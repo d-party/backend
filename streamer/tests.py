@@ -379,6 +379,145 @@ class TestAnimePartyConsumer(TransactionTestCase):
         await guest.disconnect()
         await host.disconnect()
 
+    # ── 観覧専用（spectator / タイマー）関連のテスト ─────────────────────────────
+    async def _recv_until(self, communicator, action):
+        """指定 action のメッセージが来るまで読み進めて返す（順序非依存）。"""
+        msg = await communicator.receive_json_from()
+        while msg["action"] != action:
+            msg = await communicator.receive_json_from()
+        return msg
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_spectate_receives_video_operation_with_title(self):
+        """spectate で観覧参加すると video_operation を受信でき、title が追従する。
+        観覧者は AnimeUser を作らないため人数・参加者一覧に出ない。"""
+        host = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await host.connect()
+        await host.send_json_to(
+            {
+                "action": "create",
+                "user_name": "host_user",
+                "part_id": "123456",
+                "title": "第1話",
+                "request_id": 100,
+            }
+        )
+        create = await self._recv_until(host, "create")
+        room_id = create["room_id"]
+
+        spectator = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await spectator.connect()
+        await spectator.send_json_to(
+            {"action": "spectate", "room_id": room_id, "request_id": 100}
+        )
+        ack = await self._recv_until(spectator, "spectate")
+        assert ack["room_id"] == room_id
+        assert ack["part_id"] == "123456"
+        assert ack["title"] == "第1話"
+
+        # ホストがエピソードを進めながら再生状態を配信する。
+        await host.send_json_to(
+            {
+                "action": "video_operation",
+                "operation": "playing",
+                "title": "第2話",
+                "option": {
+                    "time": "12",
+                    "src": "blob:x",
+                    "paused": "False",
+                    "rate": "1",
+                    "part_id": "222222",
+                },
+                "request_id": 100,
+            }
+        )
+        vop = await self._recv_until(spectator, "video_operation")
+        assert vop["operation"] == "playing"
+        # タイマーがエピソード切替に追従できるよう title が載る。
+        assert vop["title"] == "第2話"
+        assert vop["option"]["time"] == 12
+
+        # 観覧者は参加者としてカウントされない（host のみ）。
+        assert await self.alive_user_count(room_id) == 1
+
+        await spectator.disconnect()
+        await host.disconnect()
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_spectate_failed_for_missing_room(self):
+        """存在しないルームを観覧しようとすると failed_spectate が返る。"""
+        spectator = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await spectator.connect()
+        await spectator.send_json_to(
+            {"action": "spectate", "room_id": str(uuid.uuid4()), "request_id": 100}
+        )
+        msg = await self._recv_until(spectator, "server_message")
+        assert msg["message_type"] == "failed_spectate"
+        await spectator.disconnect()
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_spectate_survives_host_targeted_messages(self):
+        """sync_request（HostSend）等が飛んでも観覧者はクラッシュしないテスト。
+
+        観覧者は AnimeUser を持たないため、host_send ハンドラがガードされていないと
+        renew_state で AttributeError → 1011 close となる。後続の video_operation を
+        受信できることで接続の生存（＝クラッシュしていないこと）を確認する。"""
+        host = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await host.connect()
+        await host.send_json_to(
+            {
+                "action": "create",
+                "user_name": "host_user",
+                "part_id": "123456",
+                "request_id": 100,
+            }
+        )
+        create = await self._recv_until(host, "create")
+        room_id = create["room_id"]
+
+        spectator = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await spectator.connect()
+        await spectator.send_json_to(
+            {"action": "spectate", "room_id": room_id, "request_id": 100}
+        )
+        await self._recv_until(spectator, "spectate")
+
+        # ホストが sync_request を投げる（HostSend が観覧者にも配送される）。
+        await host.send_json_to({"action": "sync_request", "request_id": 100})
+        # 直後に video_operation を送り、観覧者がまだ受信できる＝クラッシュしていない。
+        await host.send_json_to(
+            {
+                "action": "video_operation",
+                "operation": "playing",
+                "option": {
+                    "time": "1",
+                    "src": "blob:x",
+                    "paused": "False",
+                    "rate": "1",
+                    "part_id": "123456",
+                },
+                "request_id": 100,
+            }
+        )
+        vop = await self._recv_until(spectator, "video_operation")
+        assert vop["operation"] == "playing"
+
+        await spectator.disconnect()
+        await host.disconnect()
+
     @database_sync_to_async
     def reaction_rows(self, room_id):
         return AnimeReaction.objects.filter(room_id=room_id).count()

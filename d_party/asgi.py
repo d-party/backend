@@ -32,6 +32,18 @@ allowed_hosts = [
     "https://" + os.environ["D_ANIME_STORE_DOMAIN"] + ":443",
 ]
 
+# タイマー画面は d-party フロントエンド（MY_DOMAIN）のオリジンから WebSocket を張り、
+# spectate で観覧専用参加する。拡張機能（D_ANIME_STORE_DOMAIN）とは別オリジンのため、
+# MY_DOMAIN 由来のオリジンも WS の OriginValidator に許可する（許可の拡大のみ）。
+_my_domain = os.environ["MY_DOMAIN"]
+allowed_hosts += [
+    _my_domain,
+    "http://" + _my_domain,
+    "https://" + _my_domain,
+    "http://www." + _my_domain,
+    "https://www." + _my_domain,
+]
+
 if settings.DEBUG:
     allowed_hosts += ["*"]
 
