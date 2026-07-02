@@ -18,6 +18,7 @@ from .format import (
     Reaction,
     RoomSend,
     ServerMessage,
+    SpectateAck,
     SyncRequest,
     SyncResponse,
     User,
@@ -89,6 +90,10 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         self.anime_room = None
         # ユーザー情報
         self.anime_user = None
+        # 観覧専用（spectator）接続かどうか。タイマー画面が video_operation の
+        # ブロードキャストを受信して再生位置を計算するための読み取り専用参加。
+        # AnimeUser を作らず、人数/一覧/ホスト委譲/自動削除に一切影響しない。
+        self.is_spectator = False
 
     async def connect(self):
         await self.accept()
@@ -100,6 +105,14 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         Args:
             close_code (int): WebSocket のクローズコード
         """
+        # 観覧専用接続は AnimeUser を持たないため leave_party の対象外。グループから
+        # 抜けるだけで、人数の減算やルーム削除の判定は行わない。
+        if self.is_spectator:
+            if self.anime_room is not None:
+                await self.channel_layer.group_discard(
+                    str(self.anime_room.room_id), self.channel_name
+                )
+            return
         await self.leave_party()
 
     @action()
@@ -196,15 +209,50 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.database_renew_state()
         await self.close()
 
+    @action()
+    async def spectate(self, room_id: uuid, **kwargs):
+        """観覧専用（spectator）でルームに参加するアクション。
+
+        拡張機能なしのタイマー画面が、既存の ``video_operation`` ブロードキャストを受信して
+        再生位置を計算するために使う。``AnimeUser`` を作らず、人数・参加者一覧・ホスト委譲・
+        自動削除の判定に一切影響しない読み取り専用参加。ルームが存在しなければ
+        ``failed_spectate`` を通知してクローズする。
+
+        Args:
+            room_id (uuid): 観覧するAnimeRoomのID
+        """
+        room = await self.database_get_or_none_room(room_id=room_id)
+        if room is None:
+            failed = ServerMessage(message_type="failed_spectate")
+            await self.send(text_data=json.dumps(failed.model_dump(mode="json")))
+            await self.close()
+            return
+        self.anime_room = room
+        self.is_spectator = True
+        await self.channel_layer.group_add(
+            str(self.anime_room.room_id), self.channel_name
+        )
+        # 最初の video_operation を受け取る前でも現在の視聴対象を表示できるよう初期状態を返す。
+        ack = SpectateAck(
+            room_id=self.anime_room.room_id,
+            part_id=self.anime_room.part_id,
+            title=self.anime_room.title,
+        )
+        await self.send(text_data=json.dumps(ack.model_dump(mode="json")))
+
     # send method
     @action()
-    async def video_operation(self, operation: str, option: dict, **kwargs):
+    async def video_operation(
+        self, operation: str, option: dict, title: str | None = None, **kwargs
+    ):
         """video_operationを受け取った場合のアクション
         video_operationを送信元以外のクライアントに対して送信し、画面を同期する
 
         Args:
             operation (str): 操作名(seek,stop,,,etc)
             option (dict): 動画プレイヤー情報
+            title (str | None): 現在視聴中のエピソードタイトル。タイマー画面が
+                エピソード切替に追従するために配信へ載せる。旧クライアントは送らないため任意。
         """
         if self.anime_room is None or self.anime_user is None:
             return
@@ -214,6 +262,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             operation=operation,
             user=User(**self.anime_user.__dict__).model_dump(),
             option=option,
+            title=title,
         )
         response_data = GroupSend(
             response=video_operation,
@@ -382,6 +431,9 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
             data (dict): group_send 経由で渡る dict。``response`` の本文と
                 ``sender_channel_name`` を持つ。
         """
+        # 観覧専用接続は AnimeUser を持たないため対象外（renew_state で AttributeError を避ける）。
+        if self.anime_user is None:
+            return
         await self.database_renew_state()
         if self.channel_name != data["sender_channel_name"] and self.anime_user.is_host:
             await self.send(text_data=json.dumps(data["response"]))
@@ -392,6 +444,9 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         Args:
             data (dict): to_userというカラムが存在している必要がある
         """
+        # 観覧専用接続は特定ユーザー宛の対象にならない（AnimeUser を持たない）。
+        if self.anime_user is None:
+            return
         if self.channel_name != data["sender_channel_name"] and str(
             self.anime_user.user_id
         ) == str(data["to_user"]["user_id"]):
