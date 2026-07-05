@@ -32,10 +32,13 @@ def test_fold_room_reactions_aggregates_and_hard_deletes():
 
     # 生データはハードデリート済み。
     assert AnimeReaction.objects.filter(room_id=room.room_id).count() == 0
-    # day1: S=2, F=1 / day2: S=1。
-    assert ReactionStat.objects.get(date=day1.date(), reaction_type="S").count == 2
-    assert ReactionStat.objects.get(date=day1.date(), reaction_type="F").count == 1
-    assert ReactionStat.objects.get(date=day2.date(), reaction_type="S").count == 1
+    # day1: S=2, F=1 / day2: S=1。TruncDate は TIME_ZONE(JST) で切るため、
+    # 期待日付も localdate（JST）で合わせる（UTC .date() だと夕方に日付がずれる）。
+    d1 = timezone.localdate(day1)
+    d2 = timezone.localdate(day2)
+    assert ReactionStat.objects.get(date=d1, reaction_type="S").count == 2
+    assert ReactionStat.objects.get(date=d1, reaction_type="F").count == 1
+    assert ReactionStat.objects.get(date=d2, reaction_type="S").count == 1
 
 
 @pytest.mark.django_db
@@ -52,4 +55,7 @@ def test_fold_room_reactions_accumulates_into_existing_rows():
     _make_reaction(room_b, "TU", day)
     fold_room_reactions(room_b.room_id)
 
-    assert ReactionStat.objects.get(date=day.date(), reaction_type="TU").count == 3
+    assert (
+        ReactionStat.objects.get(date=timezone.localdate(day), reaction_type="TU").count
+        == 3
+    )

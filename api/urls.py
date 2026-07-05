@@ -16,6 +16,10 @@ urlpatterns = [
         views.AnimeStoreLobbyResolveAPI.as_view(),
     ),
     path(
+        "v1/dmm-tv/lobby/<uuid:room_id>",
+        views.DmmTvLobbyResolveAPI.as_view(),
+    ),
+    path(
         "v1/statistics/anime-store/active-user-per-day",
         views.AnimeActiveUserPerDayAPI.as_view(),
     ),

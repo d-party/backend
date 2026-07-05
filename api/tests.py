@@ -6,8 +6,13 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from streamer.factories import AnimeRoomFactory, AnimeUserFactory
-from streamer.models import AnimeReaction, ReactionStat
+from streamer.factories import AnimeRoomFactory, AnimeUserFactory, DmmRoomFactory
+from streamer.models import (
+    AnimeReaction,
+    DmmReaction,
+    DmmReactionStat,
+    ReactionStat,
+)
 
 
 def _clear_reaction_tables() -> None:
@@ -17,9 +22,14 @@ def _clear_reaction_tables() -> None:
     tests (e.g. the consumer folding test) are not flushed between runs. Called in
     ``setUp`` it runs inside the per-test transaction and is rolled back afterwards,
     so it only hides that committed pollution for the duration of one test.
+
+    統計はサービス横断で合算するため（``_reaction_counts_by_type``）、DMM の生／集計
+    リアクションも一緒にクリアする（DMM consumer テストが DmmReactionStat をコミットする）。
     """
     ReactionStat.objects.all().delete()
     AnimeReaction.objects.all().delete(hard=True)
+    DmmReactionStat.objects.all().delete()
+    DmmReaction.objects.all().delete(hard=True)
 
 
 class TestHealthCheckAPI(APITestCase):
@@ -132,6 +142,52 @@ class TestAnimeStoreLobbyResolveAPI(APITestCase):
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
+class TestDmmTvLobbyResolveAPI(APITestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+
+    def endpoint(self, room_id) -> str:
+        return f"/api/v1/dmm-tv/lobby/{room_id}"
+
+    @pytest.mark.django_db
+    def test_lobby_resolve_splits_season_and_content(self):
+        """part_id="season/content" を再生ページ URL の season/content へ分解することを確認"""
+        season_id = "4wkcznqei1bwdh0axu7zyojaa"
+        content_id = "5kx6qgf15fhe80w4ndxppnyb7"
+        room = DmmRoomFactory(
+            part_id=f"{season_id}/{content_id}", title="大賢者リドル - 第1話"
+        )
+        response = self.client.get(self.endpoint(room.room_id))
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["part_id"] == f"{season_id}/{content_id}"
+        assert response.data["room_id"] == str(room.room_id)
+        assert response.data["title"] == "大賢者リドル - 第1話"
+        url = response.data["redirect_url"]
+        assert "tv.dmm.com/vod/playback/on-demand/" in url
+        assert f"content={content_id}" in url
+        assert f"season={season_id}" in url
+        assert "party=join" in url
+
+    @pytest.mark.django_db
+    def test_lobby_resolve_content_only_when_no_slash(self):
+        """スラッシュを含まない part_id は content のみ（season なし）として扱う"""
+        content_id = "c7tzzizzvhuj53zhmpf9aa2c0"
+        room = DmmRoomFactory(part_id=content_id)
+        response = self.client.get(self.endpoint(room.room_id))
+        assert response.status_code == status.HTTP_200_OK
+        url = response.data["redirect_url"]
+        assert f"content={content_id}" in url
+        assert "season=" not in url
+
+    @pytest.mark.django_db
+    def test_lobby_resolve_not_found_404(self):
+        """存在しないルーム ID では 404 が返ることを確認"""
+        import uuid
+
+        response = self.client.get(self.endpoint(uuid.uuid4()))
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
 class TestStatsDaysParam(APITestCase):
     """``?days=N`` の検証（未指定→既定、範囲外→400）。"""
 
@@ -211,6 +267,36 @@ class TestStatsPeriodScope(APITestCase):
             "/api/v1/statistics/anime-store/anime-reaction-all-count", {"days": "30"}
         )
         assert total.data["data"]["count"] == 6
+
+    @pytest.mark.django_db
+    def test_reaction_counts_include_dmm_sources(self):
+        """リアクション集計は DMM（DmmReactionStat + alive DmmRoom）も合算する。
+
+        統計はサービス横断（``REACTION_SOURCES``）なので、dアニメと DMM の畳み込み済み
+        （``ReactionStat`` / ``DmmReactionStat``）と alive ルームの生リアクションが両方とも
+        同じ集計に足し込まれる。
+        """
+        today = timezone.now().date()
+        # dアニメ: 畳み込み 2 + alive 1 = 3
+        ReactionStat.objects.create(date=today, reaction_type="S", count=2)
+        anime_room = AnimeRoomFactory()
+        self._make_reaction(anime_room, "S", timezone.now())
+        # DMM: 畳み込み 3 + alive 1 = 4
+        DmmReactionStat.objects.create(date=today, reaction_type="S", count=3)
+        dmm_room = DmmRoomFactory()
+        dmm = DmmReaction.objects.create(room_id=dmm_room, reaction_type="S")
+        DmmReaction.objects.filter(pk=dmm.pk).update(created_at=timezone.now())
+
+        by_type = self.client.get(
+            "/api/v1/statistics/anime-store/anime-reaction-count", {"days": "30"}
+        )
+        smile = next(r for r in by_type.data["data"] if r["reaction_type"] == "smile")
+        assert smile["count"] == 7  # (2+1) anime + (3+1) dmm
+
+        total = self.client.get(
+            "/api/v1/statistics/anime-store/anime-reaction-all-count", {"days": "30"}
+        )
+        assert total.data["data"]["count"] == 7
 
 
 class TestStatsCache(APITestCase):
