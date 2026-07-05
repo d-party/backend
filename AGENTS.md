@@ -177,6 +177,12 @@ docker compose exec django python manage.py close_active_sessions
   `SECRET_KEY` 由来）。`SECRET_KEY` を変えると既存データは復号できなくなる。
 - **API 契約**: `api/urls.py` のパスとレスポンス形状（特に shields は
   `{"schemaVersion":1, ...}`）は外部バッジ・拡張から参照される。
+- **タイマー / 観覧専用（spectator）**: `spectate` アクションは `AnimeUser` を作らずグループへ
+  読み取り専用参加する（人数/一覧/ホスト委譲/自動削除に非影響）。タイマー画面（フロント）が
+  `video_operation` を受信して再生位置を計算するための経路。`video_operation` の任意 `title` は
+  エピソード切替の追従用（旧クライアントは送らないため `None`）。フロント（`MY_DOMAIN`）の
+  オリジンから WS を張るため、`asgi.py` の `OriginValidator` に `MY_DOMAIN` を許可済み。
+  `host_send`/`user_send` は `anime_user is None`（spectator）をガードすること。
 - **ルーム詳細設定（後方互換）**: `Setting` は create 時に既定値（すべて `False`）で自動生成。
   設定は create メッセージを変えず、オーナー限定の `update_setting` アクションで適用する
   （旧拡張は送らないため全 `False` = 現行挙動）。一方通行モード（`one_way`）は非オーナーの
