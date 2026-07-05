@@ -268,6 +268,36 @@ class TestStatsPeriodScope(APITestCase):
         )
         assert total.data["data"]["count"] == 6
 
+    @pytest.mark.django_db
+    def test_reaction_counts_include_dmm_sources(self):
+        """リアクション集計は DMM（DmmReactionStat + alive DmmRoom）も合算する。
+
+        統計はサービス横断（``REACTION_SOURCES``）なので、dアニメと DMM の畳み込み済み
+        （``ReactionStat`` / ``DmmReactionStat``）と alive ルームの生リアクションが両方とも
+        同じ集計に足し込まれる。
+        """
+        today = timezone.now().date()
+        # dアニメ: 畳み込み 2 + alive 1 = 3
+        ReactionStat.objects.create(date=today, reaction_type="S", count=2)
+        anime_room = AnimeRoomFactory()
+        self._make_reaction(anime_room, "S", timezone.now())
+        # DMM: 畳み込み 3 + alive 1 = 4
+        DmmReactionStat.objects.create(date=today, reaction_type="S", count=3)
+        dmm_room = DmmRoomFactory()
+        dmm = DmmReaction.objects.create(room_id=dmm_room, reaction_type="S")
+        DmmReaction.objects.filter(pk=dmm.pk).update(created_at=timezone.now())
+
+        by_type = self.client.get(
+            "/api/v1/statistics/anime-store/anime-reaction-count", {"days": "30"}
+        )
+        smile = next(r for r in by_type.data["data"] if r["reaction_type"] == "smile")
+        assert smile["count"] == 7  # (2+1) anime + (3+1) dmm
+
+        total = self.client.get(
+            "/api/v1/statistics/anime-store/anime-reaction-all-count", {"days": "30"}
+        )
+        assert total.data["data"]["count"] == 7
+
 
 class TestStatsCache(APITestCase):
     """キャッシュヒット時に DB の変化が TTL 内では反映されないこと。"""
