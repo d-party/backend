@@ -1,7 +1,7 @@
 import factory
 import factory.fuzzy
 
-from .models import AnimeRoom, AnimeUser
+from .models import AnimeRoom, AnimeUser, Setting
 
 
 class AnimeRoomFactory(factory.django.DjangoModelFactory):
@@ -26,3 +26,13 @@ class AnimeUserFactory(factory.django.DjangoModelFactory):
     is_host = False
     updated_at = factory.Faker("date")
     created_at = factory.Faker("date")
+
+
+class SettingFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Setting
+
+    room = factory.SubFactory(AnimeRoomFactory)
+    one_way = False
+    owner_leave_delete = False
+    disable_reaction = False
