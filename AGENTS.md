@@ -70,7 +70,7 @@ backend/   ← リポジトリ直下が django プロジェクト
   streamer/               ★同時視聴のコア
     consumers.py          AnimePartyConsumer（create/join/leave/video_operation/sync/reaction…）
     format.py             pydantic v2 メッセージ定義（公開プロトコル）
-    models.py             AnimeRoom / AnimeUser / AnimeReaction / AnimeRoomHistory
+    models.py             AnimeRoom / AnimeUser / AnimeReaction / AnimeRoomHistory / Setting（ルーム詳細設定, 1:1）
     mixins.py             LogicalDeletionMixin（alive/dead/delete(hard=)）
     fields.py             EncryptedCharField（保存時暗号化）
     routing.py            ws: anime-store/party/
@@ -183,6 +183,12 @@ docker compose exec django python manage.py close_active_sessions
   エピソード切替の追従用（旧クライアントは送らないため `None`）。フロント（`MY_DOMAIN`）の
   オリジンから WS を張るため、`asgi.py` の `OriginValidator` に `MY_DOMAIN` を許可済み。
   `host_send`/`user_send` は `anime_user is None`（spectator）をガードすること。
+- **ルーム詳細設定（後方互換）**: `Setting` は create 時に既定値（すべて `False`）で自動生成。
+  設定は create メッセージを変えず、オーナー限定の `update_setting` アクションで適用する
+  （旧拡張は送らないため全 `False` = 現行挙動）。一方通行モード（`one_way`）は非オーナーの
+  `video_operation` をブロックし、オーナー退室で自動削除（`owner_leave_delete` を含意）。
+  `disable_reaction` は配信・永続化を行わない（自分の表示はクライアント側担保）。`room_setting`
+  はサーバ push（join/create/更新時）で配布し、クライアント発の read は設けない。
 
 ## サブモジュール運用
 

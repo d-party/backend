@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.timezone import now
 
-from .models import AnimeReaction, AnimeRoom, AnimeUser
+from .models import AnimeReaction, AnimeRoom, AnimeUser, Setting
 
 
 @admin.action(description="Logically delete selected items")
@@ -45,3 +45,14 @@ class AnimeUserAdmin(LogicalDeletionModelAdmin):
 @admin.register(AnimeReaction)
 class AnimeReactionAdmin(LogicalDeletionModelAdmin):
     list_display = ("reaction_id", "reaction_type", "created_at", "deleted_at")
+
+
+@admin.register(Setting)
+class SettingAdmin(admin.ModelAdmin):
+    list_display = (
+        "room",
+        "one_way",
+        "owner_leave_delete",
+        "disable_reaction",
+        "updated_at",
+    )
