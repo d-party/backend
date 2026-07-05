@@ -4,6 +4,8 @@ import uuid
 
 from channels.db import database_sync_to_async
 from django.db import transaction
+from django.db.models import F, Value
+from django.db.models.functions import Greatest
 from djangochannelsrestframework.decorators import action
 from djangochannelsrestframework.generics import GenericAsyncAPIConsumer
 
@@ -104,9 +106,13 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         return bool((self.room_setting or {}).get("disable_reaction"))
 
     def _effective_owner_leave_delete(self) -> bool:
-        """オーナー退室時自動削除の実効値。一方通行モードはこれを含意する。"""
-        s = self.room_setting or {}
-        return bool(s.get("owner_leave_delete")) or bool(s.get("one_way"))
+        """オーナー退室時自動削除の実効値。
+
+        一方通行モード（one_way）とは独立。one_way は非オーナーの動画操作を
+        ブロックするだけで、ルームの自動削除は含意しない。自動削除は
+        owner_leave_delete が明示的に有効なときだけ行う。
+        """
+        return bool((self.room_setting or {}).get("owner_leave_delete"))
 
     async def connect(self):
         await self.accept()
@@ -504,9 +510,9 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         await self.database_delete_user()
         await self.database_decrease_num_people()
         user_count = await self.database_get_user_count()
-        # オーナー退室時自動削除（一方通行モードはこれを含意）。オーナーが抜けたら残りの
-        # 参加者ごとルームを即削除し、全員へ room_deleted を通知する。猶予削除やホスト委譲は
-        # 行わない。
+        # オーナー退室時自動削除。オーナーが抜けたら残りの参加者ごとルームを即削除し、
+        # 全員へ room_deleted を通知する。猶予削除やホスト委譲は行わない。
+        # （一方通行モード単体では自動削除しない。owner_leave_delete が有効なときだけ。）
         if self.anime_user.is_host and self._effective_owner_leave_delete():
             room_id_str = str(self.anime_room.room_id)
             _cancel_pending_room_delete(room_id_str)
@@ -636,9 +642,17 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
 
     @database_sync_to_async
     def database_decrease_num_people(self):
-        """人が減った場合にnum_peopleを減らす"""
-        self.anime_room.num_people = int(self.anime_room.num_people) - 1
-        self.anime_room.save()
+        """人が減った場合にnum_peopleを減らす。
+
+        各接続が保持する ``self.anime_room`` のキャッシュ値をそのまま ``save()`` すると、
+        別接続の増減を取りこぼして num_people が実在室数とずれ、``PositiveSmallIntegerField``
+        の制約（>= 0）を割り込んで IntegrityError になり得る。特にオーナー退室後もルームが
+        存続する（自動削除しない）場合に残った参加者が抜ける経路で顕在化する。DB 上の
+        現在値に対してアトミックに 1 減算し、0 未満にはしない。
+        """
+        AnimeRoom.objects.filter(room_id=self.anime_room.room_id).update(
+            num_people=Greatest(F("num_people") - 1, Value(0))
+        )
 
     @database_sync_to_async
     def database_promote_next_host(self):

@@ -564,6 +564,49 @@ class TestAnimePartyConsumer(TransactionTestCase):
 
     @pytest.mark.django_db(transaction=True)
     @pytest.mark.asyncio
+    async def test_one_way_alone_does_not_delete_room_on_host_leave(self):
+        """一方通行モード単体（owner_leave_delete は無効）では、ホスト退室でも
+        ルームは削除されず、room_deleted も配信されないテスト。"""
+        host = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await host.connect()
+        room_id = await self._create_room(host)
+        await self._recv_until(host, "room_setting")
+        await host.send_json_to(
+            {"action": "update_setting", "one_way": True, "request_id": 100}
+        )
+        await self._recv_until(host, "room_setting")
+
+        guest = WebsocketCommunicator(
+            AnimePartyConsumer.as_asgi(), "/anime-store/party/"
+        )
+        await guest.connect()
+        await guest.send_json_to(
+            {
+                "action": "join",
+                "user_name": "guest_user",
+                "room_id": room_id,
+                "request_id": 100,
+            }
+        )
+        await self._recv_until(guest, "room_setting")
+
+        # ホストが退室しても、一方通行単体ではルームは自動削除されない。
+        await host.disconnect()
+
+        # ゲストに届く残りのメッセージに room_deleted が含まれないことを確認する。
+        while await guest.receive_nothing() is False:
+            msg = await guest.receive_json_from()
+            assert msg.get("message_type") != "room_deleted"
+        # ルームと参加者（ゲスト）は生存したまま。
+        assert await self.room_alive(room_id) is True
+        assert await self.alive_user_count(room_id) == 1
+
+        await guest.disconnect()
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
     async def test_disable_reaction_not_broadcast_or_persisted(self):
         """リアクション禁止設定では、他参加者へ配信されず統計にも記録されないテスト。"""
         host = WebsocketCommunicator(
