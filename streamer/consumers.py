@@ -1,6 +1,5 @@
 import asyncio
 import json
-import uuid
 
 from channels.db import database_sync_to_async
 from django.db import transaction
@@ -166,14 +165,12 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
 
     @action()
-    async def join(
-        self, room_id: uuid, user_name: str, user_icon="FaRegUser", **kwargs
-    ):
+    async def join(self, room_id: str, user_name: str, user_icon="FaRegUser", **kwargs):
         """joinを受け取った場合のアクション
         joinを受け取った場合、ルームが存在していればルームに参加する
 
         Args:
-            room_id (uuid): AnimeRoomオブジェクトに存在するroom_id
+            room_id (str): AnimeRoomオブジェクトに存在するroom_id（ワイヤ上は文字列）
             user_name (str): ユーザーが指定する事ができるユーザー名
             user_icon (str): ユーザーが指定する react-icons (FA6) のキー。旧拡張は送らないため既定値あり。
         """
@@ -293,12 +290,12 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         )
 
     @action()
-    async def sync_response(self, to_user: uuid, option: dict, **kwargs):
+    async def sync_response(self, to_user: dict, option: dict, **kwargs):
         """sync_responseを受け取った場合のアクション
         sync_responseはsync_requestを送信したユーザーに対する返信
 
         Args:
-            to_user (uuid): 送信先のAnimeUserオブジェクトのID
+            to_user (dict): 送信先の User ペイロード（user_id で宛先を判定する）
             option (dict): 動画プレイヤー情報
         """
         if self.anime_room is None or self.anime_user is None:
@@ -688,7 +685,7 @@ class AnimePartyConsumer(GenericAsyncAPIConsumer):
         """ルームが存在していれば、ルームのオブジェクトを取得、そうでなければNoneを返す
 
         Args:
-            room_id (uuid): 検索するAnimeRoomのID
+            room_id (str): 検索するAnimeRoomのID
 
         Returns:
             AnimeRoom | None: ルームのオブジェクト。見つからない場合はNone
