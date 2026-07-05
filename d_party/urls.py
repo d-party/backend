@@ -31,4 +31,7 @@ if settings.DEBUG:
     urlpatterns += [path("__debug__/", include(debug_toolbar.urls))]
     from django.conf.urls.static import static
 
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    # static() の戻り値型（django-stubs）と urlpatterns の要素型が食い違うが実行時は問題ない。
+    urlpatterns += static(  # type: ignore[arg-type]
+        settings.STATIC_URL, document_root=settings.STATIC_ROOT
+    )

@@ -35,6 +35,9 @@ dev = [
     "pytest-cov>=6.0",
     "factory-boy>=3.3",
     "ruff>=0.8",
+    "mypy>=1.13",
+    "django-stubs[compatible-mypy]>=5.1",
+    "djangorestframework-stubs>=3.15",
     "django-debug-toolbar>=4.4",
     "werkzeug>=3.1",
     "pip-licenses>=5.0",
@@ -73,3 +76,51 @@ ignore = [
 DJANGO_SETTINGS_MODULE = "d_party.settings"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.13"
+# django-stubs / drf-stubs でモデル・QuerySet・DRF の型を解決する。
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+# 既存コードへの初回導入のため、まずは実害のある型不整合を拾う現実的な強度にする。
+# 未注釈関数の中身も検査するが、全関数への型注釈強制（disallow_untyped_defs）は
+# 段階導入するまで課さない。
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+# 型スタブの無い外部ライブラリ（channels / djangochannelsrestframework 等）の import は
+# ノイズになるため無視し、プロジェクト自身のコードの検査に集中する。
+ignore_missing_imports = true
+# 検査対象外:
+# - migrations: 生成物。
+# - manage.py: エントリスクリプト。
+# - tests / test_* / conftest: テストは factory-boy の動的属性（Factory.<field> /
+#   SubFactory）を多用し、メタクラス生成のため mypy/django-stubs では解決できず
+#   attr-defined の誤検出になる。テスト本体の型検査は費用対効果が低いため除外する。
+exclude = [
+    'migrations/',
+    'manage\.py$',
+    'tests\.py$',
+    'test_.*\.py$',
+    'conftest\.py$',
+]
+
+[[tool.mypy.overrides]]
+module = ["*.migrations.*"]
+ignore_errors = true
+
+# streamer.consumers（WebSocket コア）は既存実装の型負債を段階導入する。
+# - union-attr: self.anime_room / self.anime_user は None 初期化で、メソッド冒頭の
+#   None ガード後でも await（DB アクセス）を挟むと mypy が narrowing を解除するため
+#   多発する（ガードがあり実行時は None にならない）。
+# - arg-type: 公開プロトコル(format.py)のモデルへ意図的に dict（model_dump 結果や
+#   ワイヤ受信値）を渡し pydantic に coerce させている。プロトコル互換のため runtime は
+#   変えない。
+# - assignment: response_data を型の異なる Send ラッパーで使い回している。
+# これらは実行時バグではないため、当該コードのみ緩和し、段階的に解消する。
+[[tool.mypy.overrides]]
+module = ["streamer.consumers"]
+disable_error_code = ["union-attr", "arg-type", "assignment"]
+
+[tool.django-stubs]
+django_settings_module = "d_party.settings"

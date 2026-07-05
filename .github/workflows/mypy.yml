@@ -1,0 +1,36 @@
+name: mypy
+
+on:
+  push:
+
+jobs:
+  mypy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # mypy（django-stubs プラグイン）は DJANGO_SETTINGS_MODULE を import して
+    # モデル型を解決する。settings.py は import 時に env を要求するが、DB/Redis へ
+    # 実接続はしないためサービスコンテナは不要で、値はダミーでよい。
+    env:
+      SECRET_KEY: django-insecure-ci
+      DEBUG: "1"
+      MY_DOMAIN: localhost
+      D_ANIME_STORE_DOMAIN: animestore.docomo.ne.jp
+      TIME_ZONE: Asia/Tokyo
+      LANGUAGE_CODE: ja
+      DATABASE_ENGINE: django_prometheus.db.backends.postgresql
+      DATABASE_USER: d_party
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      POSTGRES_DB: d_party
+      POSTGRES_PASSWORD: password
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      CHROME_EXTENSION_REQUIRED_VERSION: 1.0.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: install dependencies
+        run: uv sync --frozen
+      - name: run mypy
+        run: uv run mypy .
