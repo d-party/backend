@@ -16,6 +16,7 @@ from streamer.models import (
     AnimeReaction,
     AnimeRoom,
     AnimeUser,
+    DmmRoom,
     ReactionStat,
     ReactionType,
 )
@@ -431,6 +432,55 @@ class AnimeStoreLobbyResolveAPI(APIView):
                 "part_id": anime_room.part_id,
                 "room_id": str(room_id),
                 "title": anime_room.title,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class DmmTvLobbyResolveAPI(APIView):
+    """Resolve a room id to the DMM TV redirect URL.
+
+    ``AnimeStoreLobbyResolveAPI`` の DMM TV 版。フロントのルーム遷移ページ
+    （``/dmm-tv/lobby/<room_id>``）が、拡張機能のインストール確認後にユーザーを
+    どこへリダイレクトするか（＝視聴ページ + party=join マーカー）を得るために呼ぶ。
+
+    NOTE: DMM プレイヤー同期は後続対応（PR2）。DMM の再生ページ DOM 確定後に、
+    プレイヤーページの content script と合わせて最終的な視聴 URL 形を確定する。
+    本エンドポイントは anime 版と同じレスポンス契約（redirect_url / part_id /
+    room_id / title）を維持し、リダイレクト先には現状 DMM の詳細ページを用いる。
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, room_id, format=None) -> Response:
+        dmm_tv_domain = os.environ.get("DMM_TV_DOMAIN", "tv.dmm.com")
+        try:
+            dmm_room = DmmRoom.objects.get(room_id=room_id)
+        except DmmRoom.DoesNotExist:
+            return Response(
+                {"message": "ルームが見つかりません"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if dmm_room.deleted_at is not None:
+            return Response(
+                {"message": "ルームは終了しています"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        base_url = f"https://{dmm_tv_domain}/vod/detail/?"
+        url_param = urllib.parse.urlencode(
+            {
+                "content": dmm_room.part_id,
+                "party": "join",
+                "room_id": str(room_id),
+            }
+        )
+        return Response(
+            {
+                "redirect_url": base_url + url_param,
+                "part_id": dmm_room.part_id,
+                "room_id": str(room_id),
+                "title": dmm_room.title,
             },
             status=status.HTTP_200_OK,
         )

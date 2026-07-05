@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from streamer.factories import AnimeRoomFactory, AnimeUserFactory
+from streamer.factories import AnimeRoomFactory, AnimeUserFactory, DmmRoomFactory
 from streamer.models import AnimeReaction, ReactionStat
 
 
@@ -122,6 +122,35 @@ class TestAnimeStoreLobbyResolveAPI(APITestCase):
         assert response.data["room_id"] == str(room.room_id)
         assert response.data["title"] == "鬼滅の刃 - 第1話 - 残酷"
         assert "partId=654321" in response.data["redirect_url"]
+
+    @pytest.mark.django_db
+    def test_lobby_resolve_not_found_404(self):
+        """存在しないルーム ID では 404 が返ることを確認"""
+        import uuid
+
+        response = self.client.get(self.endpoint(uuid.uuid4()))
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestDmmTvLobbyResolveAPI(APITestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+
+    def endpoint(self, room_id) -> str:
+        return f"/api/v1/dmm-tv/lobby/{room_id}"
+
+    @pytest.mark.django_db
+    def test_lobby_resolve_ok_200(self):
+        """DmmRoom が存在する場合、DMM の redirect_url とタイトルを返すことを確認"""
+        content_id = "c7tzzizzvhuj53zhmpf9aa2c0"
+        room = DmmRoomFactory(part_id=content_id, title="大賢者リドル - 第1話")
+        response = self.client.get(self.endpoint(room.room_id))
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["part_id"] == content_id
+        assert response.data["room_id"] == str(room.room_id)
+        assert response.data["title"] == "大賢者リドル - 第1話"
+        assert "tv.dmm.com" in response.data["redirect_url"]
+        assert f"content={content_id}" in response.data["redirect_url"]
 
     @pytest.mark.django_db
     def test_lobby_resolve_not_found_404(self):
