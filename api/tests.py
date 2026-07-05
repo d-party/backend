@@ -7,7 +7,12 @@ from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
 from streamer.factories import AnimeRoomFactory, AnimeUserFactory, DmmRoomFactory
-from streamer.models import AnimeReaction, ReactionStat
+from streamer.models import (
+    AnimeReaction,
+    DmmReaction,
+    DmmReactionStat,
+    ReactionStat,
+)
 
 
 def _clear_reaction_tables() -> None:
@@ -17,9 +22,14 @@ def _clear_reaction_tables() -> None:
     tests (e.g. the consumer folding test) are not flushed between runs. Called in
     ``setUp`` it runs inside the per-test transaction and is rolled back afterwards,
     so it only hides that committed pollution for the duration of one test.
+
+    統計はサービス横断で合算するため（``_reaction_counts_by_type``）、DMM の生／集計
+    リアクションも一緒にクリアする（DMM consumer テストが DmmReactionStat をコミットする）。
     """
     ReactionStat.objects.all().delete()
     AnimeReaction.objects.all().delete(hard=True)
+    DmmReactionStat.objects.all().delete()
+    DmmReaction.objects.all().delete(hard=True)
 
 
 class TestHealthCheckAPI(APITestCase):
@@ -140,17 +150,34 @@ class TestDmmTvLobbyResolveAPI(APITestCase):
         return f"/api/v1/dmm-tv/lobby/{room_id}"
 
     @pytest.mark.django_db
-    def test_lobby_resolve_ok_200(self):
-        """DmmRoom が存在する場合、DMM の redirect_url とタイトルを返すことを確認"""
-        content_id = "c7tzzizzvhuj53zhmpf9aa2c0"
-        room = DmmRoomFactory(part_id=content_id, title="大賢者リドル - 第1話")
+    def test_lobby_resolve_splits_season_and_content(self):
+        """part_id="season/content" を再生ページ URL の season/content へ分解することを確認"""
+        season_id = "4wkcznqei1bwdh0axu7zyojaa"
+        content_id = "5kx6qgf15fhe80w4ndxppnyb7"
+        room = DmmRoomFactory(
+            part_id=f"{season_id}/{content_id}", title="大賢者リドル - 第1話"
+        )
         response = self.client.get(self.endpoint(room.room_id))
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["part_id"] == content_id
+        assert response.data["part_id"] == f"{season_id}/{content_id}"
         assert response.data["room_id"] == str(room.room_id)
         assert response.data["title"] == "大賢者リドル - 第1話"
-        assert "tv.dmm.com" in response.data["redirect_url"]
-        assert f"content={content_id}" in response.data["redirect_url"]
+        url = response.data["redirect_url"]
+        assert "tv.dmm.com/vod/playback/on-demand/" in url
+        assert f"content={content_id}" in url
+        assert f"season={season_id}" in url
+        assert "party=join" in url
+
+    @pytest.mark.django_db
+    def test_lobby_resolve_content_only_when_no_slash(self):
+        """スラッシュを含まない part_id は content のみ（season なし）として扱う"""
+        content_id = "c7tzzizzvhuj53zhmpf9aa2c0"
+        room = DmmRoomFactory(part_id=content_id)
+        response = self.client.get(self.endpoint(room.room_id))
+        assert response.status_code == status.HTTP_200_OK
+        url = response.data["redirect_url"]
+        assert f"content={content_id}" in url
+        assert "season=" not in url
 
     @pytest.mark.django_db
     def test_lobby_resolve_not_found_404(self):
