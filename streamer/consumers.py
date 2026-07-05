@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import ClassVar
 
 from channels.db import database_sync_to_async
 from django.db import transaction
@@ -34,6 +35,11 @@ from .models import (
     AnimeReaction,
     AnimeRoom,
     AnimeUser,
+    BaseReaction,
+    BaseReactionStat,
+    BaseRoom,
+    BaseSetting,
+    BaseUser,
     DmmReaction,
     DmmReactionStat,
     DmmRoom,
@@ -119,11 +125,12 @@ class BasePartyConsumer(GenericAsyncAPIConsumer):
     permission_classes = ()
 
     # ── サブクラスが差し込むサービス別モデル ─────────────────────────────
-    Room = None
-    UserModel = None
-    Reaction = None
-    SettingModel = None
-    ReactionStatModel = None
+    # 基底では値を持たず型注釈のみ（サブクラスが具象モデルを代入する）。
+    Room: ClassVar[type[BaseRoom]]
+    UserModel: ClassVar[type[BaseUser]]
+    Reaction: ClassVar[type[BaseReaction]]
+    SettingModel: ClassVar[type[BaseSetting]]
+    ReactionStatModel: ClassVar[type[BaseReactionStat]]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -825,7 +832,9 @@ class BasePartyConsumer(GenericAsyncAPIConsumer):
     @database_sync_to_async
     def database_get_or_create_setting(self):
         """ルームの詳細設定を既定値で取得/作成する（ルーム作成時に呼ぶ）。"""
-        setting, _ = self.SettingModel.objects.get_or_create(room=self.room)
+        # ``room`` は具象 Setting/DmmSetting 側で宣言する 1:1 PK。抽象 BaseSetting には
+        # 無いため django-stubs がキーワード解決できない（実行時は具象なので正しい）。
+        setting, _ = self.SettingModel.objects.get_or_create(room=self.room)  # type: ignore[misc]
         return self._setting_to_dict(setting)
 
     @database_sync_to_async
@@ -835,7 +844,7 @@ class BasePartyConsumer(GenericAsyncAPIConsumer):
         旧クライアントが作成した Setting 行の無いルームへ後方互換で参加する場合にも
         安全に既定値へフォールバックする。
         """
-        setting = self.SettingModel.objects.filter(room=self.room).first()
+        setting = self.SettingModel.objects.filter(room=self.room).first()  # type: ignore[misc]
         if setting is None:
             return {
                 "one_way": False,
@@ -849,7 +858,7 @@ class BasePartyConsumer(GenericAsyncAPIConsumer):
         self, one_way: bool, owner_leave_delete: bool, disable_reaction: bool
     ):
         """ルームの詳細設定を更新する（オーナー限定の update_setting から呼ぶ）。"""
-        setting, _ = self.SettingModel.objects.get_or_create(room=self.room)
+        setting, _ = self.SettingModel.objects.get_or_create(room=self.room)  # type: ignore[misc]
         setting.one_way = one_way
         setting.owner_leave_delete = owner_leave_delete
         setting.disable_reaction = disable_reaction

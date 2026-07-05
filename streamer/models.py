@@ -61,6 +61,10 @@ class BaseSetting(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # 抽象基底に既定マネージャを明示（挙動は既定と同一・マイグレーション不要）。具象を
+    # ``type[BaseSetting]`` として扱う consumer から ``.objects`` を型安全に参照するため。
+    objects = models.Manager()
+
     class Meta:
         abstract = True
 
