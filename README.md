@@ -45,7 +45,7 @@ docker compose exec django python manage.py collectstatic --noinput
 
 ## 開発
 
-settings.py で`debug = True`においてコンテナを起動させた場合に 8000 ポートにデプロイされている Django コンテナに直接アクセスすることで、django-debug-toolbar が有効に働きます。
+settings.py で`debug = True`においてコンテナを起動させた場合に 8000 ポートにデプロイされている Django コンテナに直接アクセスすることで、Django を直叩きしてデバッグできます（debug-toolbar は撤去済み。解析は Prometheus/Grafana を利用）。
 
 ### 環境変数（dev / prod の出し分け）
 
@@ -53,7 +53,7 @@ settings.py で`debug = True`においてコンテナを起動させた場合に
 Compose 経由で注入されます（backend 単体ではなく、ルートで `docker compose` を実行する）。
 
 - **dev**（ルート `.env.dev`、`DEBUG=1`）… `entrypoint.sh` が `runserver` を起動し、
-  `localhost:8000` で django-debug-toolbar が有効。
+  `localhost:8000` で Django を直叩きできる。
 - **prod**（ルート `.env.prod`、`DEBUG=0`）… `gunicorn`（uvicorn worker）で ASGI 配信。
 
 > `manage.py` は `/env_files/.env.global` を `override=True` で読み込みます。そのため

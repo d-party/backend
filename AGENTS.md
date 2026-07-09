@@ -161,7 +161,7 @@ docker compose exec django python manage.py close_active_sessions
 | URL | 内容 |
 |-----|------|
 | `http://localhost` | アプリ（Nginx 経由） |
-| `http://localhost:8000` | Django 直接（debug-toolbar） |
+| `http://localhost:8000` | Django 直接 |
 | `http://localhost:8080` | Adminer（PostgreSQL 管理） |
 | `http://localhost:9090` | Prometheus |
 | `http://localhost:3000` | Grafana |
