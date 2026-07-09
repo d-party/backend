@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 """
 
 import os
-import socket
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -59,8 +58,6 @@ INSTALLED_APPS = [
     "streamer",
     "api",
 ]
-if DEBUG:
-    INSTALLED_APPS += ["debug_toolbar"]
 
 AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesBackend",
@@ -79,8 +76,6 @@ MIDDLEWARE = [
     "axes.middleware.AxesMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
-if DEBUG:
-    MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware"]
 
 ROOT_URLCONF = "d_party.urls"
 
@@ -309,11 +304,3 @@ if DEBUG:
 
 # django-extensions
 RUNSERVERPLUS_SERVER_ADDRESS_PORT = "0.0.0.0:8000"
-
-if DEBUG:
-    hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
-    INTERNAL_IPS = [ip[:-1] + "1" for ip in ips] + ["127.0.0.1", "10.0.2.2"]
-
-DEBUG_TOOLBAR_CONFIG = {
-    "SHOW_TOOLBAR_CALLBACK": lambda request: True,
-}
