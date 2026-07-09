@@ -268,10 +268,6 @@ JAZZMIN_SETTINGS = {
     "language_chooser": False,
 }
 
-JAZZMIN_UI_TWEAKS = {
-    "theme": "darkly",
-}
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.0/howto/static-files/
