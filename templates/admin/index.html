@@ -1,0 +1,68 @@
+{% extends "admin/index.html" %}
+
+{% load i18n %}
+
+{% comment %}
+d-party 管理ダッシュボード。unfold の admin/index.html を上書きし、KPI カードと
+リアクション内訳を先頭に差し込んだうえで、{{ block.super }} で unfold 標準の
+アプリ一覧・履歴をそのまま残す。データは settings.UNFOLD.DASHBOARD_CALLBACK
+（d_party.dashboard.dashboard_callback）が context に載せる。
+{% endcomment %}
+
+{% block content %}
+    {# --- KPI カード --- #}
+    <div class="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-2 xl:grid-cols-4">
+        {% for card in dp_cards %}
+            <div class="bg-white border border-base-200 flex flex-col overflow-hidden p-6 relative rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+                <div class="grow relative pl-8">
+                    <span class="text-font-subtle-light text-sm dark:text-font-subtle-dark">
+                        {{ card.title }}
+                    </span>
+
+                    <h2 class="font-semibold mt-1 text-2xl text-font-important-light dark:text-font-important-dark">
+                        {{ card.value }}
+                    </h2>
+
+                    <p class="mt-1 text-font-subtle-light text-xs dark:text-font-subtle-dark">
+                        {{ card.description }}
+                    </p>
+
+                    <span class="material-symbols-outlined absolute -left-6 text-base-300 top-1/2 -translate-x-1/3 -translate-y-1/2 text-6xl! dark:text-base-500">
+                        {{ card.icon }}
+                    </span>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    {# --- リアクション内訳（累計） --- #}
+    {% if dp_reaction_breakdown %}
+        <div class="bg-white border border-base-200 mb-8 p-6 rounded-default shadow-xs dark:bg-base-900 dark:border-base-800">
+            <h2 class="font-semibold mb-6 text-[15px] text-font-important-light dark:text-font-important-dark">
+                {% trans "リアクション内訳（累計）" %}
+            </h2>
+
+            <div class="flex flex-col gap-4">
+                {% for row in dp_reaction_breakdown %}
+                    <div>
+                        <div class="flex items-center justify-between mb-1 text-sm">
+                            <span class="text-font-important-light dark:text-font-important-dark">
+                                {{ row.label }}
+                            </span>
+                            <span class="text-font-subtle-light dark:text-font-subtle-dark">
+                                {{ row.count }} ({{ row.percent }}%)
+                            </span>
+                        </div>
+
+                        <div class="bg-base-100 h-2 overflow-hidden rounded-full dark:bg-base-800">
+                            <div class="bg-primary-600 h-full rounded-full" style="width: {{ row.percent }}%"></div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    {# --- unfold 標準のアプリ一覧・履歴 --- #}
+    {{ block.super }}
+{% endblock %}

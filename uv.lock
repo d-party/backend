@@ -389,8 +389,8 @@ dependencies = [
     { name = "django-axes" },
     { name = "django-extensions" },
     { name = "django-filter" },
-    { name = "django-jazzmin" },
     { name = "django-prometheus" },
+    { name = "django-unfold" },
     { name = "djangochannelsrestframework" },
     { name = "djangorestframework" },
     { name = "gunicorn" },
@@ -429,8 +429,8 @@ requires-dist = [
     { name = "django-axes", specifier = ">=7.0" },
     { name = "django-extensions", specifier = ">=3.2.3" },
     { name = "django-filter", specifier = ">=24.3" },
-    { name = "django-jazzmin", specifier = ">=3.0" },
     { name = "django-prometheus", specifier = ">=2.3" },
+    { name = "django-unfold", specifier = ">=0.100" },
     { name = "djangochannelsrestframework", specifier = ">=1.2" },
     { name = "djangorestframework", specifier = ">=3.15" },
     { name = "gunicorn", specifier = ">=23.0" },
@@ -525,18 +525,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django-jazzmin"
-version = "3.0.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e0/70/a652284cd612bcd45da3cc18715db391c6cdeafd1ec9af60f4a3a243c74e/django_jazzmin-3.0.4.tar.gz", hash = "sha256:e8aef8b75edd8792408a69407c22ece924ab7a3d5c9d6f84d7a4eb57e06e7a44", size = 2423027, upload-time = "2026-03-13T11:29:18.821Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/1c/42d37c90bec6f6763206b966252dabe019f0c0197a6aaebafa5b213b78f1/django_jazzmin-3.0.4-py3-none-any.whl", hash = "sha256:70935a17604cc530e99be68d3d2b8c576095e1dac4af50464c827d66646f40fa", size = 2495119, upload-time = "2026-03-13T11:29:20.447Z" },
-]
-
-[[package]]
 name = "django-prometheus"
 version = "2.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -580,6 +568,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/51/8b/dc3c37cf994836ee09bc07f6a0c0ea840b975449940bd7ff77cc97a732f3/django_stubs_ext-6.0.6.tar.gz", hash = "sha256:e6f09884e48d7c5b250a373dfa22aa3e83bb91b8babbd8d05187f6b92247f232", size = 6674, upload-time = "2026-06-23T08:21:38.355Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/e4/7d60a1bdb092807318af34a809dc6674b95cc78ec4d3aaa6027174e7201c/django_stubs_ext-6.0.6-py3-none-any.whl", hash = "sha256:5470c970f61a3ccf5aae7633feef1a097f944f417b955da200c9ac26ecd9134b", size = 10361, upload-time = "2026-06-23T08:21:37.228Z" },
+]
+
+[[package]]
+name = "django-unfold"
+version = "0.100.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/aa/9e/0fd00f47a74af01e467f64b40dcf2e6343761c59ed532922bf7bfa2484ef/django_unfold-0.100.0.tar.gz", hash = "sha256:b153cac2fd5c36338767ec7bed72c1560b5f5d88a3429dc5484560c705c335bb", size = 1126533, upload-time = "2026-07-06T10:33:08.97Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cd/94/895052dd2cf0d5d1e05f368c81baa5501967b2645ccd8adfa63140ad769b/django_unfold-0.100.0-py3-none-any.whl", hash = "sha256:4bfc6d148a9dfc9cbed7501db81cc8040510fa0b2bfe664067ceebcedd861ee6", size = 1254100, upload-time = "2026-07-06T10:33:07.515Z" },
 ]
 
 [[package]]

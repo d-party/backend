@@ -87,7 +87,7 @@ backend/   ← リポジトリ直下が django プロジェクト
 Chrome 拡張 (content script) ──wss──▶ Nginx ──▶ Django(ASGI/Channels)
                                               ├─ REST API (DRF)     : /api/*
                                               ├─ WebSocket          : /anime-store/party/
-                                              └─ 管理画面 (Jazzmin) : /admin/*
+                                              └─ 管理画面 (Unfold)  : /admin/*
 Django ──▶ PostgreSQL（永続化） / Redis（Channels レイヤ）
 ```
 
