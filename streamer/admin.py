@@ -3,6 +3,7 @@ from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
 from django.utils.timezone import now
+from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
@@ -74,6 +75,31 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     form = UserChangeForm
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
+
+    # 一覧からも姓名列（既定の first_name / last_name）を外す。
+    list_display = ("username", "email", "is_staff")
+
+    # d-party の参加者は AnimeUser.user_name（表示名）で管理し、管理者アカウント
+    # （auth.User）の姓名（first_name / last_name）は一切使わない。カラム自体は
+    # Django 組み込みのため残るが、編集画面には出さないよう "Personal info" から
+    # 姓名を除いて email のみ残す。
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        (_("Personal info"), {"fields": ("email",)}),
+        (
+            _("Permissions"),
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                ),
+            },
+        ),
+        (_("Important dates"), {"fields": ("last_login", "date_joined")}),
+    )
 
 
 @admin.register(Group)
