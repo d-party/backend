@@ -13,6 +13,10 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 import os
 from pathlib import Path
 
+from django.templatetags.static import static
+from django.urls import reverse_lazy
+from django.utils.translation import gettext_lazy as _
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -43,7 +47,10 @@ CSRF_TRUSTED_ORIGINS = [
 
 INSTALLED_APPS = [
     "daphne",
-    "jazzmin",
+    # django-unfold: 管理画面テーマ。django.contrib.admin より前に置く必要がある。
+    "unfold",
+    "unfold.contrib.filters",
+    "unfold.contrib.forms",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -82,7 +89,9 @@ ROOT_URLCONF = "d_party.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # プロジェクト直下の templates/ を最優先（filesystem loader は app loader より
+        # 先に評価される）。unfold の admin/index.html をダッシュボードで上書きする。
+        "DIRS": [os.path.join(BASE_DIR, "templates")],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -163,113 +172,120 @@ USE_I18N = True
 
 USE_TZ = True
 
-JAZZMIN_SETTINGS = {
-    "site_title": "d-party",
-    "site_header": "d-party",
-    "site_brand": "d-party",
-    "site_logo": "branding/dp-mini.png",
-    "site_logo_classes": "img-circle",
-    "site_icon": None,
-    "welcome_sign": "Welcome to d-party",
-    "copyright": "d-party",
-    "search_model": "auth.User",
-    "user_avatar": None,
-    ############
-    # Top Menu #
-    ############
-    "topmenu_links": [
-        {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
-        {
-            "name": "Support",
-            "url": "https://github.com/farridav/django-jazzmin/issues",
-            "new_window": True,
+# django-unfold（管理画面テーマ）。旧 django-jazzmin から移行。
+# ブランディング・サイドバー・ダッシュボードを設定する。ダーク/ライトは
+# unfold が自動対応する（旧 jazzmin の darkly 固定で起きたヘッダー黒つぶれを解消）。
+UNFOLD = {
+    "SITE_TITLE": "d-party",
+    "SITE_HEADER": "d-party",
+    "SITE_SUBHEADER": _("同時視聴 管理コンソール"),
+    # ロゴ未表示時のフォールバックに使う Material Symbols アイコン名。
+    "SITE_SYMBOL": "smart_display",
+    "SITE_LOGO": {
+        "light": lambda request: static("branding/dp-mini.png"),
+        "dark": lambda request: static("branding/dp-mini.png"),
+    },
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
+    "SHOW_BACK_BUTTON": False,
+    # 環境バッジ（DEBUG に応じて Development/Production を表示）。
+    "ENVIRONMENT": "d_party.dashboard.environment_callback",
+    # トップページのダッシュボード（KPI カード）を差し込むコールバック。
+    "DASHBOARD_CALLBACK": "d_party.dashboard.dashboard_callback",
+    "COLORS": {
+        # d-party のブランドに合わせた紫系のプライマリカラー。
+        "primary": {
+            "50": "oklch(97.7% .014 308.299)",
+            "100": "oklch(94.6% .033 307.174)",
+            "200": "oklch(90.2% .063 306.703)",
+            "300": "oklch(82.7% .119 306.383)",
+            "400": "oklch(71.4% .203 305.504)",
+            "500": "oklch(62.7% .265 303.9)",
+            "600": "oklch(55.8% .288 302.321)",
+            "700": "oklch(49.6% .265 301.924)",
+            "800": "oklch(43.8% .218 303.724)",
+            "900": "oklch(38.1% .176 304.987)",
+            "950": "oklch(29.1% .149 302.717)",
         },
-        {
-            "name": "Develop",
-            "url": "https://github.com/d-Party",
-            "new_window": True,
-        },
-        {
-            "name": "Chart",
-            "url": "/stats",
-            "new_window": True,
-        },
-        {
-            "name": "grafana",
-            "url": "/grafana/",
-            "new_window": True,
-        },
-        {"model": "auth.User"},
-        {"model": "streamer.AnimeRoom"},
-    ],
-    #############
-    # User Menu #
-    #############
-    # Additional links to include in the user menu on the top right ("app" url type is not allowed)
-    "usermenu_links": [
-        {
-            "name": "Support",
-            "url": "https://github.com/farridav/django-jazzmin/issues",
-            "new_window": True,
-        },
-        {"model": "auth.user"},
-    ],
-    #############
-    # Side Menu #
-    #############
-    "show_sidebar": True,
-    "navigation_expanded": True,
-    "hide_apps": [],
-    "hide_models": [],
-    "order_with_respect_to": ["auth", "books", "books.author", "books.book"],
-    "custom_links": {
-        "books": [
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": [
             {
-                "name": "Make Messages",
-                "url": "make_messages",
-                "icon": "fas fa-comments",
-                "permissions": ["books.view_book"],
-            }
-        ]
+                "title": _("ナビゲーション"),
+                "separator": True,
+                "items": [
+                    {
+                        "title": _("ダッシュボード"),
+                        "icon": "dashboard",
+                        "link": reverse_lazy("admin:index"),
+                    },
+                ],
+            },
+            {
+                "title": _("同時視聴"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("ルーム"),
+                        "icon": "meeting_room",
+                        "link": reverse_lazy("admin:streamer_animeroom_changelist"),
+                    },
+                    {
+                        "title": _("ユーザー"),
+                        "icon": "group",
+                        "link": reverse_lazy("admin:streamer_animeuser_changelist"),
+                    },
+                    {
+                        "title": _("リアクション"),
+                        "icon": "favorite",
+                        "link": reverse_lazy("admin:streamer_animereaction_changelist"),
+                    },
+                    {
+                        "title": _("ルーム詳細設定"),
+                        "icon": "tune",
+                        "link": reverse_lazy("admin:streamer_setting_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("アカウント"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("ユーザー（認証）"),
+                        "icon": "person",
+                        "link": reverse_lazy("admin:auth_user_changelist"),
+                    },
+                    {
+                        "title": _("グループ"),
+                        "icon": "shield_person",
+                        "link": reverse_lazy("admin:auth_group_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("外部リンク"),
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": _("統計チャート"),
+                        "icon": "bar_chart",
+                        "link": "/stats",
+                    },
+                    {
+                        "title": _("Grafana"),
+                        "icon": "monitoring",
+                        "link": "/grafana/",
+                    },
+                ],
+            },
+        ],
     },
-    # Custom icons for side menu apps/models See https://fontawesome.com/icons?d=gallery&m=free&v=5.0.0,5.0.1,5.0.10,5.0.11,5.0.12,5.0.13,5.0.2,5.0.3,5.0.4,5.0.5,5.0.6,5.0.7,5.0.8,5.0.9,5.1.0,5.1.1,5.2.0,5.3.0,5.3.1,5.4.0,5.4.1,5.4.2,5.13.0,5.12.0,5.11.2,5.11.1,5.10.0,5.9.0,5.8.2,5.8.1,5.7.2,5.7.1,5.7.0,5.6.3,5.5.0,5.4.2
-    # for the full list of 5.13.0 free icon classes
-    "icons": {
-        "auth": "fas fa-users-cog",
-        "auth.user": "fas fa-user",
-        "auth.Group": "fas fa-users",
-    },
-    "default_icon_parents": "fas fa-chevron-circle-right",
-    "default_icon_children": "fas fa-circle",
-    #################
-    # Related Modal #
-    #################
-    "related_modal_active": False,
-    #############
-    # UI Tweaks #
-    #############
-    "custom_css": None,
-    "custom_js": None,
-    "show_ui_builder": False,
-    ###############
-    # Change view #
-    ###############
-    # Render out the change view as a single form, or in tabs, current options are
-    # - single
-    # - horizontal_tabs (default)
-    # - vertical_tabs
-    # - collapsible
-    # - carousel
-    "changeform_format": "horizontal_tabs",
-    "changeform_format_overrides": {
-        "auth.user": "collapsible",
-        "auth.group": "vertical_tabs",
-    },
-    "language_chooser": False,
-}
-
-JAZZMIN_UI_TWEAKS = {
-    "theme": "darkly",
 }
 
 
