@@ -25,6 +25,8 @@ class LogicalDeletionModelAdmin(ModelAdmin):
 
     actions = [logically_delete, revive]
     readonly_fields = ("deleted_at",)
+    # 既定は作成日時の降順（新しいものが先頭）で並べる。
+    ordering = ("-created_at",)
 
     def get_queryset(self, request):
         # Show every row (including logically deleted) in the admin.
@@ -62,6 +64,8 @@ class SettingAdmin(ModelAdmin):
         "disable_reaction",
         "updated_at",
     )
+    # 既定は作成日時の降順（新しいものが先頭）で並べる。
+    ordering = ("-created_at",)
 
 
 # django.contrib.auth の User / Group を unfold 仕様で再登録し、フォーム・変更画面の
