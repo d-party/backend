@@ -47,7 +47,10 @@ class AnimeRoomAdmin(LogicalDeletionModelAdmin):
 
 @admin.register(AnimeUser)
 class AnimeUserAdmin(LogicalDeletionModelAdmin):
-    list_display = ("user_id", "is_host", "created_at", "deleted_at")
+    # user_name は EncryptedCharField（保存時暗号化）だが from_db_value で
+    # ORM 読み込み時に透過的に復号されるため、そのまま平文で表示できる。
+    # 暗号化列のため DB 側での並べ替え・検索はできない（表示のみ）。
+    list_display = ("user_name", "user_id", "is_host", "created_at", "deleted_at")
 
 
 @admin.register(AnimeReaction)
