@@ -2,7 +2,7 @@
 
 # Bring in the uv binary from the official image as a named stage so the COPY
 # below references a previously defined FROM alias (hadolint DL3022).
-FROM ghcr.io/astral-sh/uv:0.9 AS uv
+FROM ghcr.io/astral-sh/uv:0.12 AS uv
 
 FROM python:3.14-slim-bookworm
 
