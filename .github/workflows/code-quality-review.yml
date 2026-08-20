@@ -7,13 +7,13 @@ jobs:
   mypy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
       - name: export requirements
         run: |
           uv export --no-hashes --format requirements-txt -o requirements.txt;
-      - uses: tsuyoshicho/action-mypy@v3
+      - uses: tsuyoshicho/action-mypy@v5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: "github-pr-review"
@@ -21,7 +21,7 @@ jobs:
   actionlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: reviewdog/action-actionlint@v1
         with:
           reporter: "github-pr-review"
@@ -29,11 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: true
       - name: Setup node/npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
       - run: |

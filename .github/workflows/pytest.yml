@@ -50,9 +50,9 @@ jobs:
       REDIS_PORT: "6379"
       CHROME_EXTENSION_REQUIRED_VERSION: 1.0.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
       - name: install dependencies
         run: uv sync --frozen
       # Migration files are committed to the repo, so CI must not generate
@@ -65,7 +65,7 @@ jobs:
       - name: run pytest
         run: uv run pytest --cov --cov-report=xml
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
