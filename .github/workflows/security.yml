@@ -73,6 +73,11 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
   trivy:
+    # コンテナイメージのスキャンは main のみで走らせる。ベースイメージ由来の
+    # 新規 CVE で PR（Dependabot の依存更新を含む）がブロックされるのを避けるため、
+    # PR/トピックブランチの push では実行しない。定期実行（schedule）と
+    # workflow_dispatch も既定ブランチ = main なのでここで拾える。
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
