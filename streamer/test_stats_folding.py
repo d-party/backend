@@ -17,6 +17,18 @@ def _make_reaction(room, reaction_type: str, when: datetime.datetime):
     return reaction
 
 
+def _day(when: datetime.datetime) -> datetime.date:
+    """The day bucket ``fold_room_reactions`` uses for ``when``.
+
+    ``TruncDate`` converts to the active timezone (``TIME_ZONE``, USE_TZ=True)
+    before truncating, so stats are bucketed per *local* day. ``timezone.now()``
+    is UTC-aware and its ``.date()`` is the UTC day, which differs from the
+    local day for part of each day (e.g. Asia/Tokyo from 15:00 UTC onwards) —
+    asserting on it made these tests fail depending on the time of day.
+    """
+    return timezone.localtime(when).date()
+
+
 @pytest.mark.django_db
 def test_fold_room_reactions_aggregates_and_hard_deletes():
     """畳み込みで日次×種別に集計され、生の AnimeReaction は物理削除される。"""
@@ -33,9 +45,9 @@ def test_fold_room_reactions_aggregates_and_hard_deletes():
     # 生データはハードデリート済み。
     assert AnimeReaction.objects.filter(room_id=room.room_id).count() == 0
     # day1: S=2, F=1 / day2: S=1。
-    assert ReactionStat.objects.get(date=day1.date(), reaction_type="S").count == 2
-    assert ReactionStat.objects.get(date=day1.date(), reaction_type="F").count == 1
-    assert ReactionStat.objects.get(date=day2.date(), reaction_type="S").count == 1
+    assert ReactionStat.objects.get(date=_day(day1), reaction_type="S").count == 2
+    assert ReactionStat.objects.get(date=_day(day1), reaction_type="F").count == 1
+    assert ReactionStat.objects.get(date=_day(day2), reaction_type="S").count == 1
 
 
 @pytest.mark.django_db
@@ -52,4 +64,4 @@ def test_fold_room_reactions_accumulates_into_existing_rows():
     _make_reaction(room_b, "TU", day)
     fold_room_reactions(room_b.room_id)
 
-    assert ReactionStat.objects.get(date=day.date(), reaction_type="TU").count == 3
+    assert ReactionStat.objects.get(date=_day(day), reaction_type="TU").count == 3
