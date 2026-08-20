@@ -33,6 +33,13 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     AUTOBAHN_USE_NVX=0 uv sync --frozen --no-install-project
 
+# The app runs from UV_PROJECT_ENVIRONMENT (/opt/venv) and never uses the base
+# image's pip/setuptools — uv is the only installer. Drop them so their CVEs do
+# not ride along in the published image (setuptools ships an old version, and
+# pip vendors its own copy of msgpack). Note PATH puts /opt/venv/bin first, so
+# the interpreter that owns them must be addressed by absolute path.
+RUN /usr/local/bin/python -m pip uninstall --yes setuptools pip
+
 COPY . .
 
 EXPOSE 8000
