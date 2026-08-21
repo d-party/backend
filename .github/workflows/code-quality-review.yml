@@ -6,14 +6,40 @@ on:
 jobs:
   mypy:
     runs-on: ubuntu-latest
+    # このジョブは reviewdog で PR にインラインコメントを付けるためのもの。
+    # 型検査そのものは mypy.yml が push で回している。django-stubs プラグインが
+    # DJANGO_SETTINGS_MODULE を import するため、mypy.yml と同じダミー env が要る
+    # （DB/Redis へ実接続はしないのでサービスコンテナは不要）。
+    env:
+      SECRET_KEY: django-insecure-ci
+      DEBUG: "1"
+      MY_DOMAIN: localhost
+      D_ANIME_STORE_DOMAIN: animestore.docomo.ne.jp
+      TIME_ZONE: Asia/Tokyo
+      LANGUAGE_CODE: ja
+      DATABASE_ENGINE: django_prometheus.db.backends.postgresql
+      DATABASE_USER: d_party
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      POSTGRES_DB: d_party
+      POSTGRES_PASSWORD: password
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      CHROME_EXTENSION_REQUIRED_VERSION: 1.0.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
-      - name: export requirements
-        run: |
-          uv export --no-hashes --format requirements-txt -o requirements.txt;
-      - uses: tsuyoshicho/action-mypy@v3
+        uses: astral-sh/setup-uv@v7
+      # action-mypy は v4 以降 setup_method の既定が "nothing" になり、自前では
+      # mypy を入れなくなった（v3 は入れていた）。requirements.txt を吐くだけでは
+      # mypy が PATH に無く exit 127 になるため、プロジェクトの venv を作って
+      # そこへ通す。pip install mypy ではなく uv sync にすることで、django-stubs /
+      # drf-stubs プラグインが解決できる mypy.yml と同じ環境になる。
+      - name: install dependencies
+        run: uv sync --frozen
+      - name: put the project venv on PATH
+        run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - uses: tsuyoshicho/action-mypy@v5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: "github-pr-review"
@@ -21,7 +47,7 @@ jobs:
   actionlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: reviewdog/action-actionlint@v1
         with:
           reporter: "github-pr-review"
@@ -29,11 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: true
       - name: Setup node/npm
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
       - run: |
