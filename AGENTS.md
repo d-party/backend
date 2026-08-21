@@ -21,7 +21,7 @@ WebSocket（`/anime-store/party/`）を Django へ振り分けます。
 | 項目 | 採用 |
 |---|---|
 | 言語 | Python 3.14 |
-| フレームワーク | Django 5.2 (LTS) · Channels 4 · DRF · djangochannelsrestframework |
+| フレームワーク | Django 6.0 · Channels 4 · DRF · djangochannelsrestframework |
 | ASGI | gunicorn + `uvicorn-worker`（本番） / `runserver`（dev, DEBUG=1） |
 | DB | **PostgreSQL 16**（`django-prometheus` 経由で計測） |
 | キャッシュ/レイヤ | Redis 7（`channels-redis`） |

@@ -15,7 +15,7 @@
 
 [![Docker](https://img.shields.io/badge/-Docker-EEE.svg?logo=docker&style=flat)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python:3.13-F9DC3E.svg?logo=python&style=flat)](https://www.python.org/)
-[![Django:5.2](https://img.shields.io/badge/Django:5.2-092E20.svg?logo=django&style=flat)](https://www.djangoproject.com/)
+[![Django:6.0](https://img.shields.io/badge/Django:6.0-092E20.svg?logo=django&style=flat)](https://www.djangoproject.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL:16-336791.svg?logo=postgresql&style=flat&logoColor=white)](https://www.postgresql.org/)
 [![Nginx](https://img.shields.io/badge/-Nginx-5.svg?logo=nginx&style=flat)](https://www.nginx.co.jp/)
 [![Redis](https://img.shields.io/badge/Redis:7-511.svg?logo=redis&style=flat)](https://redis.io/)
@@ -24,7 +24,7 @@
 d-Party のバックエンド部分を担当するフォルダ
 
 > 開発・エージェント向けの詳細は [`AGENTS.md`](AGENTS.md) を参照。
-> （Python 3.13 · Django 5.2 · PostgreSQL · uv · ruff へモダナイズ済み）
+> （Python 3.13 · Django 6.0 · PostgreSQL · uv · ruff へモダナイズ済み）
 
 ## 初回起動コマンド
 
