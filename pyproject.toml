@@ -5,7 +5,7 @@ description = "d-party backend — Django Channels powered watch-together servic
 authors = [{ name = "U-Not", email = "euno.eng@gmail.com" }]
 requires-python = ">=3.13"
 dependencies = [
-    "django>=5.2,<6.0",
+    "django>=5.2,<7.0",
     "channels>=4.2",
     "channels-redis>=4.2,<4.4",
     "redis>=5,<9",
@@ -15,7 +15,7 @@ dependencies = [
     "djangochannelsrestframework>=1.2",
     "django-unfold>=0.100",
     "django-axes>=7.0",
-    "django-prometheus>=2.3",
+    "django-prometheus>=2.5",
     "django-extensions>=3.2.3",
     "pydantic>=2.9",
     "psycopg[binary]>=3.2",
