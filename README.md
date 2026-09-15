@@ -1,11 +1,9 @@
 # d-party Backend
 
-[![Django pytest](https://github.com/d-party/d-party-Backend/actions/workflows/pytest.yml/badge.svg?branch=main&event=push)](https://github.com/d-party/d-party-Backend/actions/workflows/pytest.yml)
-[![LicenseCheck](https://github.com/d-party/d-party-Backend/actions/workflows/license-check.yml/badge.svg?event=push)](https://github.com/d-party/d-party-Backend/actions/workflows/license-check.yml)
-[![Security](https://github.com/d-party/d-party-Backend/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/d-party/d-party-Backend/actions/workflows/security.yml)
-[![Code Quality](https://github.com/d-party/d-party-Backend/actions/workflows/code-quality.yml/badge.svg?branch=main)](https://github.com/d-party/d-party-Backend/actions/workflows/code-quality.yml)
+[![CI](https://github.com/d-party/backend/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/d-party/backend/actions/workflows/ci.yml)
+[![Code Quality Review](https://github.com/d-party/backend/actions/workflows/code-quality-review.yml/badge.svg)](https://github.com/d-party/backend/actions/workflows/code-quality-review.yml)
 
-[![codecov](https://codecov.io/gh/d-party/d-party-Backend/branch/main/graph/badge.svg?token=WZ8DXWKN50)](https://codecov.io/gh/d-party/d-party-Backend)
+[![Coverage badge](https://raw.githubusercontent.com/d-party/backend/python-coverage-comment-action-data/badge.svg)](https://htmlpreview.github.io/?https://github.com/d-party/backend/blob/python-coverage-comment-action-data/htmlcov/index.html)
 [![Website](https://img.shields.io/website?label=d-party.net&up_message=online&url=https%3A%2F%2Fd-party.net)](https://d-party.net)
 [![Security Headers](https://img.shields.io/security-headers?url=https%3A%2F%2Fd-party.net)](https://securityheaders.com/?q=https%3A%2F%2Fd-party.net&followRedirects=on)
 [![Mozilla HTTP Observatory Grade](https://img.shields.io/mozilla-observatory/grade/d-party.net?publish)](https://observatory.mozilla.org/analyze/d-party.net)
@@ -81,13 +79,60 @@ docker compose exec django pytest --cov
 > ローカル（コンテナ無し）でも `cd Django && uv run pytest` で実行できます。
 > テストは `conftest.py` で InMemoryChannelLayer を使うため Redis は不要です。
 
+#### カバレッジ（PR へのコメント / バッジ）
+
+CI の `pytest` ジョブは `uv run pytest --cov --cov-report=xml` を実行し、
+[`py-cov-action/python-coverage-comment-action`](https://github.com/py-cov-action/python-coverage-comment-action)
+で **PR にカバレッジのサマリコメント** を投稿します。外部 SaaS（Codecov 等）は使わず、
+`GITHUB_TOKEN` だけで動きます。バッジとカバレッジ履歴は専用ブランチ
+`python-coverage-comment-action-data` に保存され、README 冒頭のバッジがそこを参照します。
+
+action は `coverage.xml` ではなく **`.coverage`（binary）** を読むため、
+`pyproject.toml` の `[tool.coverage.run]` で `relative_files = true` を有効にしています
+（CI とローカルで絶対パスが異なると差分が正しく解決できないため）。
+
+**一度だけ必要な設定（リポジトリ管理者）**
+
+1. この PR を main へマージする。
+2. main への最初の CI 実行で、action が `python-coverage-comment-action-data` ブランチを
+   自動生成する（手動で作る必要はない）。
+3. そのブランチが **ブランチ保護の対象になっていない** ことを確認する
+   （ワイルドカードの保護ルールがある場合のみ要注意）。
+4. Settings → Actions → General → *Workflow permissions* が
+   **Read and write permissions** になっていることを確認する
+   （ジョブ側でも `contents: write` / `pull-requests: write` を宣言済み）。
+5. 以上で README 冒頭のカバレッジバッジが表示される。表示されない場合は、生成された
+   `python-coverage-comment-action-data` ブランチの README に出力される最新の
+   バッジ URL を確認して差し替える。
+
+> 旧 Codecov 連携（`CODECOV_TOKEN` シークレットと codecov バッジ）は廃止しました。
+> シークレットは不要になったので削除して構いません。
+> なお `GIST_TOKEN` / gist ID は **不要** です。この action は v3 以降、バッジの保存先を
+> Gist から上記のデータブランチへ移行しており、gist 関連の入力は存在しません。
+
 ### Lint / Format（ruff）
 
+フォーマッタ・Lint・import 順序（旧 black + isort + flake8 系）はすべて **ruff** に統一
+されています。設定は `pyproject.toml` の `[tool.ruff]` にあり、`select` に `I`（isort）を
+含むため `ruff check` が import 順序も検査します。
+
 ```bash
-cd Django
-uvx ruff format .
-uvx ruff check . --fix
+uv sync
+uv run ruff format .          # 整形
+uv run ruff check . --fix     # Lint + import 整列（自動修正）
 ```
+
+CI（`.github/workflows/ci.yml` の `ruff` ジョブ）は **検証のみ** を行い、違反があれば
+失敗します（旧 `autoblack.yml` のようにブランチへ自動コミット / force-push はしません）。
+手元で以下が通ることを確認してから push してください。
+
+```bash
+uv run ruff format --check .
+uv run ruff check .
+```
+
+`pre-commit install` しておけば、コミット時に同じ ruff フックが走ります
+（`.pre-commit-config.yaml`）。
 
 ### ライセンスチェックを実行
 

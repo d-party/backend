@@ -24,10 +24,10 @@ repos:
       - id: check-added-large-files
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.18
+    rev: v0.16.6
     hooks:
       # Lint（flake8 / flake8-django / flake8-bandit 等を ruff で再現。設定は pyproject.toml）
       - id: ruff-check
         args: [--fix]
-      # Format（black 互換）
+      # Format（旧 black の置き換え。black 互換のスタイル）
       - id: ruff-format
