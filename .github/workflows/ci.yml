@@ -1,0 +1,403 @@
+# 統合 CI。
+#
+# 旧 pytest.yml / security.yml / license-check.yml / code-quality.yml / mypy.yml /
+# autoblack.yml をこの 1 ファイルへ集約した。
+#
+# - フォーマット/Lint は ruff。自動コミットはせず `--check` で落とす（旧 autoblack の
+#   force-push は廃止）。
+# - 型検査は mypy（django-stubs / drf-stubs プラグインのためダミー env が要る）。
+# - コンテナイメージの CVE スキャン（trivy）は廃止。
+#
+# `code-quality-review.yml`（reviewdog）と `release.yml` は対象外でそのまま残している。
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # 旧 security.yml の定期スキャンを引き継ぐ（毎週金曜 21:25 UTC）。
+    - cron: "25 21 * * 5"
+
+# 同一ブランチの古い実行は打ち切る。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 既定は権限なし。各ジョブで必要最小限だけ与える。
+permissions: {}
+
+jobs:
+  ruff:
+    name: Ruff (format & lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: install dependencies
+        run: uv sync --frozen
+      # 旧 autoblack.yml は ruff の修正結果をブランチへ force-push していた。
+      # CI が履歴を書き換えるのは事故のもとなので、検証のみ行い違反なら落とす。
+      - name: ruff format --check
+        run: uv run ruff format --check .
+      # import 順序（isort 相当）は pyproject.toml の select に "I" があるため
+      # このコマンドで一緒に検査される。
+      - name: ruff check
+        run: uv run ruff check .
+
+  pytest:
+    name: Pytest (PostgreSQL + Redis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # python-coverage-comment-action が
+      # `python-coverage-comment-action-data` ブランチへバッジとカバレッジ履歴を
+      # 書き、PR へコメントするために必要。
+      contents: write
+      pull-requests: write
+    # The backend repository is the django server only; postgres and redis are
+    # provided as service containers (the orchestration compose lives in the
+    # d-party monorepo root).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: d_party
+          POSTGRES_USER: d_party
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U d_party -d d_party"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      SECRET_KEY: django-insecure-ci
+      DEBUG: "1"
+      MY_DOMAIN: localhost
+      D_ANIME_STORE_DOMAIN: animestore.docomo.ne.jp
+      TIME_ZONE: Asia/Tokyo
+      LANGUAGE_CODE: ja
+      DATABASE_ENGINE: django_prometheus.db.backends.postgresql
+      DATABASE_USER: d_party
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      POSTGRES_DB: d_party
+      POSTGRES_PASSWORD: password
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      CHROME_EXTENSION_REQUIRED_VERSION: 1.0.0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: install dependencies
+        run: uv sync --frozen
+      # Migration files are committed to the repo, so CI must not generate
+      # them. Instead, fail if a model change is missing its migration, then
+      # apply the committed migrations.
+      - name: check for missing migrations
+        run: uv run python manage.py makemigrations --check --dry-run
+      - name: migrate
+        run: uv run python manage.py migrate
+      # `.coverage`（binary）が coverage コメント action の入力。coverage.xml は
+      # ローカル/他ツール向けに従来どおり残す。相対パス化は pyproject.toml の
+      # [tool.coverage.run] relative_files = true で担保している。
+      - name: run pytest
+        run: uv run pytest --cov --cov-report=xml
+      # PR にカバレッジのサマリコメントを出し、main ではバッジ用データを
+      # `python-coverage-comment-action-data` ブランチへ保存する。
+      # fork からの PR では GITHUB_TOKEN が read-only になり投稿できないため、
+      # テスト結果を巻き添えにしないよう continue-on-error にしている
+      # （その場合はコメント本文が下の artifact に残る）。
+      - name: Coverage comment
+        id: coverage_comment
+        continue-on-error: true
+        uses: py-cov-action/python-coverage-comment-action@v4.3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: "85"
+          MINIMUM_ORANGE: "70"
+      - name: Store coverage comment body
+        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-coverage-comment-action
+          path: python-coverage-comment-action.txt
+
+  mypy:
+    name: mypy (type check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    # mypy（django-stubs プラグイン）は DJANGO_SETTINGS_MODULE を import して
+    # モデル型を解決する。settings.py は import 時に env を要求するが、DB/Redis へ
+    # 実接続はしないためサービスコンテナは不要で、値はダミーでよい。
+    env:
+      SECRET_KEY: django-insecure-ci
+      DEBUG: "1"
+      MY_DOMAIN: localhost
+      D_ANIME_STORE_DOMAIN: animestore.docomo.ne.jp
+      TIME_ZONE: Asia/Tokyo
+      LANGUAGE_CODE: ja
+      DATABASE_ENGINE: django_prometheus.db.backends.postgresql
+      DATABASE_USER: d_party
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      POSTGRES_DB: d_party
+      POSTGRES_PASSWORD: password
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      CHROME_EXTENSION_REQUIRED_VERSION: 1.0.0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: install dependencies
+        run: uv sync --frozen
+      - name: run mypy
+        run: uv run mypy .
+
+  license-check:
+    name: License check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: install dependencies
+        run: uv sync --frozen
+      - name: check licenses
+        # Allow-list lives in license-whitelist-python.txt (one license per line,
+        # # comments / blank lines ignored). --partial-match: many modern packages
+        # report SPDX expressions such as "Apache-2.0 OR BSD-3-Clause" or
+        # "BSD-3-Clause AND 0BSD AND MIT ...". Exact matching rejects those even when
+        # every component is permissive, so match an allowed license as a substring.
+        run: >
+          uv run pip-licenses
+          --with-system
+          --partial-match
+          --allow-only="$(grep -v '^[[:space:]]*#' license-whitelist-python.txt | grep -v '^[[:space:]]*$' | paste -sd ';')"
+
+  bandit:
+    name: Bandit (SAST)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.9"
+      - name: install bandit
+        run: pip install bandit
+      - name: run bandit
+        run: |
+          bandit . -r -o ./bandit.txt -f txt -c ./.github/bandit.yml
+      - name: Archive bandit log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bandit-report
+          path: ./bandit.txt
+
+  pyt:
+    name: python-taint (taint analysis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: install utils
+        run: |
+          sudo apt-get update
+          sudo apt-get install moreutils -y
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.9"
+      - name: install python-taint
+        run: pip install python-taint
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: run pyt
+        run: |
+          pyt -a D -o pyt.txt .
+      - name: Archive pyt log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pyt-report
+          path: ./pyt.txt
+
+  codeql:
+    name: CodeQL analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+
+  lizard:
+    name: Lizard (complexity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Lizard Runner
+        uses: Uno-Takashi/Lizard-Runner@v3
+        with:
+          path: "."
+          language: "python"
+          exclude: "tests.py"
+
+  dockerlint:
+    name: dockerlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Setup node/npm
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: install dockerlint
+        run: |
+          npm install -g dockerlint
+      - run: |
+          dockerlint ./Dockerfile
+
+  hadolint:
+    name: hadolint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: ./Dockerfile
+          ignore: "DL3008,SC2174,DL3009,DL3059,SC3009"
+
+  dockle:
+    name: Dockle (image lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: |
+          docker build -t backend-django .
+      - name: Run Dockle
+        uses: erzz/dockle-action@v1
+        with:
+          image: backend-django
+          exit-code: 1
+          failure-threshold: fatal
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: reviewdog/action-actionlint@v1
+
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+
+  yamllint:
+    name: yamllint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: yaml-lint
+        uses: ibiqlik/action-yamllint@v3

@@ -26,7 +26,7 @@ WebSocket（`/anime-store/party/`）を Django へ振り分けます。
 | DB | **PostgreSQL 16**（`django-prometheus` 経由で計測） |
 | キャッシュ/レイヤ | Redis 7（`channels-redis`） |
 | パッケージ管理 | **uv**（`pyproject.toml` / `uv.lock`、PEP 621 + dependency-groups） |
-| Lint/Format | **ruff**（`uvx ruff format` / `uvx ruff check`） |
+| Lint/Format | **ruff**（`uv run ruff format` / `uv run ruff check`。isort 相当は `select` の `I`。black / isort / flake8 は全廃） |
 | テスト | pytest（`pytest-django` · `pytest-asyncio` · `factory-boy` · `pytest-cov`） |
 | 暗号化 | `streamer/fields.py` の Fernet ベース `EncryptedCharField`（`cryptography`） |
 | 論理削除 | `streamer/mixins.py` の `LogicalDeletionMixin`（自前実装） |
@@ -47,7 +47,7 @@ WebSocket（`/anime-store/party/`）を Django へ振り分けます。
 | django-crontab | 撤去（保持期間クリーンアップ自体を廃止。リアクションはルーム終了時に `ReactionStat` へ畳み込み） |
 | distutils `StrictVersion` | `api/views.py` の strict `x.y.z` パーサ |
 | `.extra(select={"day": "date(...)"})`（MySQL 依存） | ORM `TruncDate`（DB 非依存） |
-| black | ruff |
+| black / isort / flake8 | ruff（`format` + `check`。`select` に `I` を含むため import 整列も ruff） |
 | django-request / django-debreach | 削除（解析は Prometheus/Grafana、CSRF は Django 標準） |
 
 ## レイアウト
@@ -133,14 +133,36 @@ docker compose exec django python manage.py collectstatic --noinput
 uv sync                       # 依存をインストール（.venv 作成）
 uv run python manage.py check
 uv run pytest                 # conftest.py が InMemoryChannelLayer を使うため Redis 不要
-uvx ruff format .             # 整形
-uvx ruff check . --fix        # Lint（自動修正）
+uv run ruff format .          # 整形
+uv run ruff check . --fix     # Lint + import 整列（自動修正）
+uv run mypy .                 # 型検査（ダミー env が必要。下記参照）
 ```
+
+> `uvx ruff` ではなく `uv run ruff` を使うこと。CI（`.github/workflows/ci.yml`）は
+> `uv.lock` にピン留めされた ruff を `uv run` で実行するため、`uvx`（常に最新を取得）
+> だとバージョン差で整形結果がズレることがある。
 
 必要な環境変数（コンテナ外で動かす場合）: `SECRET_KEY`, `DEBUG`, `MY_DOMAIN`,
 `POSTGRES_DB`, `POSTGRES_PASSWORD`, `DATABASE_USER`, `DATABASE_HOST`, `DATABASE_PORT`,
 `DATABASE_ENGINE`, `REDIS_HOST`, `REDIS_PORT`, `LANGUAGE_CODE`, `TIME_ZONE`,
 `D_ANIME_STORE_DOMAIN`, `CHROME_EXTENSION_REQUIRED_VERSION`。
+
+### CI（`.github/workflows/ci.yml`）
+
+CI は **1 ファイルに集約** されている。ジョブ: `ruff` / `pytest` / `mypy` /
+`license-check` / `bandit` / `pyt` / `codeql` / `lizard` / `dockerlint` / `hadolint` /
+`dockle` / `actionlint` / `shellcheck` / `yamllint`。
+
+- **フォーマットは検証のみ**。違反は CI 失敗として扱い、自動コミットや force-push はしない
+  （旧 `autoblack.yml` は廃止）。
+- **型検査は mypy**（django-stubs / drf-stubs プラグイン）。settings の import に env を
+  要求するため、ジョブにダミー env を与えている（DB/Redis への実接続はしない）。
+- **カバレッジ**は `py-cov-action/python-coverage-comment-action` が PR へコメントし、
+  バッジを `python-coverage-comment-action-data` ブランチへ保存する（Codecov は廃止）。
+- コンテナイメージの CVE スキャン（trivy）は廃止した。イメージの静的チェックは
+  `hadolint` / `dockle` / `dockerlint` が担当する。
+- `code-quality-review.yml`（reviewdog の PR インラインコメント）と `release.yml` は
+  別ファイルのまま。
 
 ### ghost セッションの回収
 

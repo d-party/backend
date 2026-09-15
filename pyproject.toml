@@ -71,6 +71,19 @@ ignore = [
 "**/test_*.py" = ["S101"]
 "conftest.py" = ["S101"]
 
+[tool.coverage.run]
+# python-coverage-comment-action は .coverage（binary）を読み、パスを
+# リポジトリ相対で解決する。CI とローカルで絶対パスが異なるため
+# relative_files を有効にしておく（action の必須要件）。
+relative_files = true
+omit = [
+    "*/migrations/*",
+    "manage.py",
+    "*/tests.py",
+    "*/test_*.py",
+    "conftest.py",
+]
+
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "d_party.settings"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
